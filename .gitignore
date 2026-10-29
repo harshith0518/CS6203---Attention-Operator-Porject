@@ -1,0 +1,35 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# CUDA C++ build output
+*.obj
+*.o
+*.exe
+*.exp
+*.lib
+*.pdb
+*.ilk
+
+# Profiler scratch. Curated reports in profiles/ ARE tracked (graded evidence).
+*.ncu-rep.tmp
+*.nsys-rep
+*.sqlite
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------- private
+# Local agent context: working state, rules, traps. Not published.
+AGENTS.md
+
+# Course brief (Agrani Labs). Contains the mentors' email addresses.
+agrani-cutile-attention.pdf
+
+# Extracted text of the same brief.
+docs/brief-text.txt

@@ -1,0 +1,31 @@
+# Intent file for the project venv.
+# After a successful install, pin the RESOLVED versions -- this file is what you mean,
+# the lock file is what you got:
+#     .\.venv\Scripts\python.exe -m pip freeze > docs\requirements.lock.txt
+#
+# Use Python 3.12 (`py -3.12`). cuTile itself supports 3.10-3.14, but binary wheels
+# for cupy/torch lag behind on the newest interpreters.
+#
+# Install:  .\.venv\Scripts\python.exe -m pip install -r docs\requirements.txt
+
+# --- cuTile: the tile-level half of the project ------------------------------
+# >=1.2 is the first release with Ampere (sm_80/86) support -- do NOT go below, and
+# note that CTK 13.2 is the corresponding toolkit floor.
+# The [tileiras] extra vendors the TileIR compiler (tileiras + ptxas + libnvvm) into
+# the venv, so cuTile runs WITHOUT a system-wide CUDA Toolkit installed.
+cuda-tile[tileiras]>=1.2
+
+# --- host-side arrays / numerics --------------------------------------------
+numpy>=1.26
+
+# CUDA 13 wheel. If it has no build for your Python version, install torch instead
+# and write the harness against torch tensors -- cuTile accepts both via DLPack.
+cupy-cuda13x
+
+# --- reference implementation + test runner --------------------------------
+# Prefer the cu13 index if it is published; a cu12x wheel usually works too, because
+# cuTile talks to the driver API rather than linking a specific CUDA runtime.
+#     pip install torch --index-url https://download.pytorch.org/whl/cu130
+torch
+
+pytest
