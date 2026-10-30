@@ -1,7 +1,8 @@
-"""Generate the OP2 survey deck for the first mentor meeting.
+"""Generate the OP2 survey deck for the mentor meeting.
 
-One screen per idea: the six attention variants, each shown as "what it costs in
-CUDA C++" vs "what it costs in cuTile", then the plan to 07 Nov.
+Twelve slides. One idea each. Every slide carries a visual element (table, diagram,
+chart, code panel or stat block) — no bare bullet lists — and the comparison slide
+shows *real* CUDA C++ against cuTile, which is what Pravin actually asked for.
 
     .\\.venv\\Scripts\\python.exe scripts\\make_slides.py
 
@@ -11,45 +12,53 @@ Output: docs/op2-attention-slides.pptx
 from pathlib import Path
 
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.oxml.ns import qn
+from pptx.util import Inches, Pt
 
-# ---------------------------------------------------------------- look and feel
-INK = RGBColor(0x0F, 0x17, 0x2A)
-MUTED = RGBColor(0x5B, 0x6B, 0x84)
-ACCENT = RGBColor(0x0E, 0x74, 0x90)      # teal
-WARN = RGBColor(0xB4, 0x4A, 0x0B)        # burnt orange
-PANEL = RGBColor(0xF1, 0xF5, 0xF9)
-RULE = RGBColor(0xCB, 0xD5, 0xE1)
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+# ------------------------------------------------------------------ palette
+# Teal Trust, with the dark tone carrying the title and question slides.
+TEAL = RGBColor(0x02, 0x80, 0x90)
+DEEP = RGBColor(0x0B, 0x3B, 0x43)      # dark ground for sandwich slides
+SEA = RGBColor(0x00, 0xA8, 0x96)
+MINT = RGBColor(0x02, 0xC3, 0x9A)
+INK = RGBColor(0x14, 0x24, 0x2C)
+MUTED = RGBColor(0x5A, 0x6B, 0x74)
+PAPER = RGBColor(0xFF, 0xFF, 0xFF)
+PANEL = RGBColor(0xEF, 0xF6, 0xF7)
+CODEBG = RGBColor(0x11, 0x24, 0x2B)
+CODEFG = RGBColor(0xD8, 0xEC, 0xEE)
+WARN = RGBColor(0xB4, 0x4A, 0x0B)
 
-UI = "Segoe UI"
-MONO = "Consolas"
+HEAD = "Cambria"
+BODY = "Calibri"
+MONO = "Courier New"
 
 W, H = Inches(13.333), Inches(7.5)
 
 
+# ------------------------------------------------------------------ helpers
 def new(prs):
     return prs.slides.add_slide(prs.slide_layouts[6])
 
 
-def text(slide, x, y, w, h, s, size=16, bold=False, color=INK, font=UI,
-         align=PP_ALIGN.LEFT, space_after=6, line=1.15):
+def tb(slide, x, y, w, h, lines, size=16, bold=False, color=INK, font=BODY,
+       align=PP_ALIGN.LEFT, space=8, line=1.15):
     box = slide.shapes.add_textbox(x, y, w, h)
     tf = box.text_frame
     tf.word_wrap = True
-    tf.margin_left = tf.margin_right = 0
-    tf.margin_top = tf.margin_bottom = 0
-    lines = s if isinstance(s, list) else [s]
-    for i, ln in enumerate(lines):
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+    for i, s in enumerate(lines if isinstance(lines, list) else [lines]):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.alignment = align
-        p.space_after = Pt(space_after)
+        p.space_after = Pt(space)
         p.line_spacing = line
         r = p.add_run()
-        r.text = ln
+        r.text = s
         r.font.size = Pt(size)
         r.font.bold = bold
         r.font.color.rgb = color
@@ -57,402 +66,492 @@ def text(slide, x, y, w, h, s, size=16, bold=False, color=INK, font=UI,
     return box
 
 
-def header(slide, kicker, title, size=30):
-    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0),
-                                 Inches(0.14), H)
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = ACCENT
-    bar.line.fill.background()
-
-    text(slide, Inches(0.75), Inches(0.5), Inches(11.6), Inches(0.3),
-         kicker.upper(), size=11, bold=True, color=ACCENT)
-    text(slide, Inches(0.75), Inches(0.82), Inches(11.9), Inches(0.9),
-         title, size=size, bold=True, color=INK, line=1.05)
-    ln = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.75), Inches(1.72),
-                                Inches(11.85), Pt(1.1))
-    ln.fill.solid()
-    ln.fill.fore_color.rgb = RULE
-    ln.line.fill.background()
+def bullet(p, char="\u2013", indent=0.26, color=None):
+    """Real bullet via a:buChar — never a literal bullet character in the text."""
+    pPr = p._p.get_or_add_pPr()
+    pPr.set("marL", str(int(Inches(indent))))
+    pPr.set("indent", str(-int(Inches(indent))))
+    if color is not None:
+        buClr = pPr.makeelement(qn("a:buClr"), {})
+        srgb = pPr.makeelement(qn("a:srgbClr"), {"val": str(color)})
+        buClr.append(srgb)
+        pPr.append(buClr)
+    pPr.append(pPr.makeelement(qn("a:buFont"), {"typeface": "Arial"}))
+    pPr.append(pPr.makeelement(qn("a:buChar"), {"char": char}))
 
 
-def bullets(slide, items, x=Inches(0.75), y=Inches(1.95), w=Inches(11.85),
-            size=16, gap=0.16):
-    """items: list of (level, text, style) — style in {'', 'b', 'muted', 'accent'}"""
-    box = slide.shapes.add_textbox(x, y, w, Inches(4.9))
+def listy(slide, x, y, w, items, size=16, gap=12):
+    """items: (level, text) or (level, text, colour)."""
+    box = slide.shapes.add_textbox(x, y, w, Inches(4.4))
     tf = box.text_frame
     tf.word_wrap = True
-    tf.margin_left = tf.margin_right = 0
-    tf.margin_top = tf.margin_bottom = 0
-    first = True
-    for item in items:
-        level, s = item[0], item[1]
-        style = item[2] if len(item) > 2 else ""
-        p = tf.paragraphs[0] if first else tf.add_paragraph()
-        first = False
-        p.level = 0
-        p.space_after = Pt(gap * 72)
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+    for i, it in enumerate(items):
+        lvl, s = it[0], it[1]
+        col = it[2] if len(it) > 2 else INK
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.space_after = Pt(gap if lvl == 0 else max(4, gap - 5))
         p.line_spacing = 1.12
-        p.space_before = Pt(0)
-        pre = "—  " if level == 1 else ""
+        if lvl == 0:
+            bullet(p, color="028090")
+        else:
+            bullet(p, char="\u00b7", indent=0.5, color="5A6B74")
         r = p.add_run()
-        r.text = pre + s
-        r.font.size = Pt(size - (1 if level == 1 else 0))
-        r.font.name = UI
-        r.font.bold = style == "b"
-        r.font.color.rgb = (
-            MUTED if style == "muted" else
-            ACCENT if style == "accent" else
-            WARN if style == "warn" else
-            INK
-        )
-        if level == 1:
-            p.space_after = Pt(gap * 72 * 0.7)
+        r.text = s
+        r.font.size = Pt(size - (1 if lvl else 0))
+        r.font.bold = lvl == 0
+        r.font.color.rgb = col
+        r.font.name = BODY
+    return box
 
 
-def table(slide, head, rows, x=Inches(0.75), y=Inches(1.95),
-          widths=None, size=11, head_size=11, row_h=0.42):
-    nrow, ncol = len(rows) + 1, len(head)
-    total = Inches(11.85)
-    tbl_shape = slide.shapes.add_table(nrow, ncol, x, y, total, Inches(row_h * nrow))
-    tbl = tbl_shape.table
+def tile_motif(slide, x, y, cell=0.26, gap=0.06, rows=3, cols=3,
+               filled=((0, 0), (1, 1), (2, 2)), color=TEAL):
+    """The repeated visual motif: a grid of tiles, a few of them 'active'."""
+    for r in range(rows):
+        for c in range(cols):
+            s = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE,
+                Inches(x + c * (cell + gap)), Inches(y + r * (cell + gap)),
+                Inches(cell), Inches(cell))
+            s.fill.solid()
+            s.fill.fore_color.rgb = color if (r, c) in filled else PANEL
+            s.line.fill.background()
+            s.shadow.inherit = False
+
+
+def head(slide, kicker, title, dark=False):
+    """Title block. No rule, no stripe — the tile motif is the marker."""
+    fg = PAPER if dark else INK
+    tb(slide, Inches(0.75), Inches(0.55), Inches(10.6), Inches(0.3),
+       kicker.upper(), size=11.5, bold=True, color=SEA if dark else TEAL)
+    tb(slide, Inches(0.75), Inches(0.9), Inches(11.2), Inches(1.3),
+       title, size=38, bold=True, color=fg, font=HEAD, line=1.02)
+    tile_motif(slide, 11.95, 0.62, cell=0.17, gap=0.045,
+               color=SEA if dark else TEAL)
+
+
+def table(slide, cols, rows, y=Inches(2.35), widths=None, size=12, rowh=0.5,
+          headh=0.42, x=Inches(0.75), total=Inches(11.85)):
+    shape = slide.shapes.add_table(len(rows) + 1, len(cols), x, y, total,
+                                   Inches(headh + rowh * len(rows)))
+    t = shape.table
     if widths:
-        for i, frac in enumerate(widths):
-            tbl.columns[i].width = int(total * frac)
-    tbl.rows[0].height = Inches(0.38)
-    for r in range(1, nrow):
-        tbl.rows[r].height = Inches(row_h)
+        for i, f in enumerate(widths):
+            t.columns[i].width = int(total * f)
+    t.rows[0].height = Inches(headh)
+    for r in range(1, len(rows) + 1):
+        t.rows[r].height = Inches(rowh)
 
-    for c, s in enumerate(head):
-        cell = tbl.cell(0, c)
+    for c, s in enumerate(cols):
+        cell = t.cell(0, c)
         cell.fill.solid()
-        cell.fill.fore_color.rgb = INK
-        cell.margin_left = cell.margin_right = Inches(0.08)
+        cell.fill.fore_color.rgb = DEEP
+        cell.margin_left = cell.margin_right = Inches(0.09)
         cell.vertical_anchor = MSO_ANCHOR.MIDDLE
         p = cell.text_frame.paragraphs[0]
         r = p.add_run()
         r.text = s
-        r.font.size = Pt(head_size)
+        r.font.size = Pt(size)
         r.font.bold = True
-        r.font.color.rgb = WHITE
-        r.font.name = UI
+        r.font.color.rgb = PAPER
+        r.font.name = BODY
 
-    for r, row in enumerate(rows, start=1):
-        for c, s in enumerate(row):
-            cell = tbl.cell(r, c)
+    for ri, row in enumerate(rows, start=1):
+        for ci, s in enumerate(row):
+            cell = t.cell(ri, ci)
             cell.fill.solid()
-            cell.fill.fore_color.rgb = PANEL if r % 2 else WHITE
-            cell.margin_left = cell.margin_right = Inches(0.08)
-            cell.margin_top = cell.margin_bottom = Inches(0.03)
+            cell.fill.fore_color.rgb = PANEL if ri % 2 else PAPER
+            cell.margin_left = cell.margin_right = Inches(0.09)
+            cell.margin_top = cell.margin_bottom = Inches(0.02)
             cell.vertical_anchor = MSO_ANCHOR.MIDDLE
             tf = cell.text_frame
             tf.word_wrap = True
             p = tf.paragraphs[0]
-            run = p.add_run()
-            run.text = str(s)
-            run.font.size = Pt(size)
-            run.font.name = UI
-            bold = str(s).startswith("**") and str(s).endswith("**")
-            run.font.bold = bold or c == 0
-            run.font.color.rgb = INK
-    return tbl
+            r = p.add_run()
+            r.text = str(s)
+            r.font.size = Pt(size - 0.5)
+            r.font.name = BODY
+            r.font.bold = ci == 0
+            r.font.color.rgb = INK
+    return t
 
 
-def code(slide, lines, x=Inches(0.75), y=Inches(2.0), w=Inches(11.85),
-         h=Inches(4.6), size=10.5):
-    panel = slide.shapes.add_shape(1, x, y, w, h)
+def code(slide, x, y, w, h, lines, size=10.5, title=None):
+    panel = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
     panel.fill.solid()
-    panel.fill.fore_color.rgb = RGBColor(0x0B, 0x12, 0x20)
+    panel.fill.fore_color.rgb = CODEBG
     panel.line.fill.background()
-    tb = slide.shapes.add_textbox(x + Inches(0.22), y + Inches(0.16),
-                                 w - Inches(0.4), h - Inches(0.3))
-    tf = tb.text_frame
+    panel.shadow.inherit = False
+    panel.adjustments[0] = 0.03
+    ty = y
+    if title:
+        tb(slide, x + Inches(0.22), y + Inches(0.14), w - Inches(0.4), Inches(0.28),
+           title, size=11.5, bold=True, color=MINT)
+        ty = y + Inches(0.42)
+    box = slide.shapes.add_textbox(x + Inches(0.22), ty, w - Inches(0.42),
+                                   h - (ty - y) - Inches(0.1))
+    tf = box.text_frame
     tf.word_wrap = False
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
     for i, ln in enumerate(lines):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.space_after = Pt(1)
-        p.line_spacing = 1.02
+        p.space_after = Pt(0)
+        p.line_spacing = 1.04
         r = p.add_run()
         r.text = ln
         r.font.size = Pt(size)
         r.font.name = MONO
-        r.font.color.rgb = RGBColor(0xD7, 0xE3, 0xF0)
-        if ln.strip().startswith("#"):
-            r.font.color.rgb = RGBColor(0x7C, 0x8C, 0xA4)
+        r.font.color.rgb = MUTED if ln.strip().startswith("//") else CODEFG
 
 
-def caption(slide, s, y=Inches(6.62), color=MUTED, size=11.5):
-    text(slide, Inches(0.75), y, Inches(11.85), Inches(0.5), s,
-         size=size, color=color, line=1.1)
+def note(slide, s, y=Inches(6.62), color=MUTED, size=12.5):
+    tb(slide, Inches(0.75), y, Inches(11.4), Inches(0.6), s,
+       size=size, color=color, line=1.15)
 
 
-# ---------------------------------------------------------------- build
+def arrow(slide, x, y, w, h, color=SEA):
+    a = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, x, y, w, h)
+    a.fill.solid()
+    a.fill.fore_color.rgb = color
+    a.line.fill.background()
+    a.shadow.inherit = False
+    return a
+
+
+def chip(slide, x, y, w, h, text, fill=TEAL, fg=PAPER, size=13, bold=True):
+    c = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
+    c.fill.solid()
+    c.fill.fore_color.rgb = fill
+    c.line.fill.background()
+    c.shadow.inherit = False
+    c.adjustments[0] = 0.18
+    tf = c.text_frame
+    tf.word_wrap = True
+    tf.margin_left = tf.margin_right = Inches(0.06)
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = text
+    r.font.size = Pt(size)
+    r.font.bold = bold
+    r.font.color.rgb = fg
+    r.font.name = BODY
+    return c
+
+
+# ------------------------------------------------------------------ deck
 prs = Presentation()
 prs.slide_width, prs.slide_height = W, H
 
-# ---- 1 title
+# 1 ---------------------------------------------------------------- title
 s = new(prs)
-band = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), W, Inches(0.42))
-band.fill.solid()
-band.fill.fore_color.rgb = ACCENT
-band.line.fill.background()
+bg = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, W, H)
+bg.fill.solid()
+bg.fill.fore_color.rgb = DEEP
+bg.line.fill.background()
+bg.shadow.inherit = False
 
-text(s, Inches(0.95), Inches(2.05), Inches(11.4), Inches(0.4),
-     "CS-6023 GPU PROGRAMMING  ·  PROJECT OP2", size=13, bold=True, color=ACCENT)
-text(s, Inches(0.95), Inches(2.55), Inches(11.4), Inches(1.8),
-     ["Attention, written two ways", "CUDA C++ and cuTile"], size=44, bold=True, line=1.05)
-text(s, Inches(0.95), Inches(4.45), Inches(11.0), Inches(1.2),
-     ["Six attention variants, one new kernel-engineering problem each —",
-      "and what each problem costs in each programming model."],
-     size=18, color=MUTED, line=1.2)
-text(s, Inches(0.95), Inches(5.9), Inches(11.0), Inches(0.9),
-     ["Surya Harshith (cs23b010)  ·  first meeting with Pravin Jagtap and Sumanta Datta",
-      "30 October 2026"], size=12, color=MUTED, line=1.3)
+tile_motif(s, 9.85, 1.15, cell=0.42, gap=0.09, rows=5, cols=5,
+           filled=((0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (1, 3), (3, 1)),
+           color=SEA)
 
-# ---- 2 the argument
+tb(s, Inches(0.85), Inches(1.75), Inches(9.4), Inches(0.35),
+   "CS-6023 GPU PROGRAMMING  \u00b7  PROJECT OP2", size=13, bold=True, color=MINT)
+tb(s, Inches(0.85), Inches(2.25), Inches(9.6), Inches(2.0),
+   ["Attention, written", "two ways"], size=54, bold=True, color=PAPER,
+   font=HEAD, line=1.0)
+tb(s, Inches(0.85), Inches(4.15), Inches(9.2), Inches(1.1),
+   ["Six attention variants, one new kernel-engineering problem each \u2014",
+    "and what each problem costs in CUDA C++ versus cuTile."],
+   size=18, color=RGBColor(0xC8, 0xDE, 0xE2), line=1.28)
+tb(s, Inches(0.85), Inches(5.85), Inches(9.4), Inches(0.9),
+   ["Surya Harshith (cs23b010)  \u00b7  for Pravin Jagtap and Sumanta Datta",
+    "30 October 2026"], size=12.5, color=RGBColor(0x93, 0xB4, 0xBB), line=1.35)
+
+# 2 ---------------------------------------------------------------- argument
 s = new(prs)
-header(s, "the argument of this deck",
-       "Six variants, one new problem each")
-table(s,
-      ["#", "Variant", "The one new problem", "CUDA C++", "cuTile"],
+head(s, "the argument", "Six variants, one new problem each")
+table(s, ["#", "Variant", "The one new problem", "CUDA C++", "cuTile"],
       [["1", "Vanilla SDPA", "why fusion is needed at all", "low", "low"],
-       ["2", "Causal", "masking, and skipping whole tiles", "medium", "low"],
+       ["2", "Causal", "masking \u2014 and skipping whole tiles", "medium", "low"],
        ["3", "Fused + online softmax", "streaming softmax, live accumulator rescale", "high", "medium"],
        ["4", "GQA / MQA", "head broadcast; decode is memory-bound", "medium", "very low"],
        ["5", "Sliding window", "sparse tile traversal, ragged grids", "med-high", "low-med"],
-       ["6", "Cross-attention", "asymmetric shapes — the one rung CUDA wins", "low-med", "low"]],
-      widths=[0.05, 0.21, 0.40, 0.17, 0.13], size=12, row_h=0.52)
-caption(s, "The claim: these are not six features. Each rung adds exactly one new "
-           "kernel-engineering problem, and each problem costs something different in the two models.")
+       ["6", "Cross-attention", "asymmetric shapes \u2014 the one rung CUDA wins", "low-med", "low"]],
+      widths=[0.05, 0.22, 0.41, 0.16, 0.13], size=12.5, rowh=0.54)
+note(s, "These cost ratings are hypotheses, not measurements. Only #3 is implemented before "
+        "the deadline; the rest are the framing.")
 
-# ---- 3 what attention computes
+# 3 ---------------------------------------------------------------- dataflow
 s = new(prs)
-header(s, "the operator", "What attention computes")
-bullets(s, [
-    (0, "S = QKᵀ / √D      →  P = softmax(S) row-wise  →  O = PV", "b"),
-    (0, "Shapes per head: Q,K,V are [N × D]; S and P are [N × N]; O is [N × D]", ""),
-    (0, "FLOPs = 4 · B · H · N² · D  (two matmuls, each 2·N²·D per head)", ""),
-    (1, "N = sequence length, D = head dim, B = batch, H = heads", "muted"),
-    (0, "Softmax is a row reduction — not a reduction over all N² values", "accent"),
-    (0, "Attention starts after the projections: no weights, no RoPE in the kernel", "muted"),
-], size=18)
-caption(s, "Fixed contract: plain multi-head, self-attention, forward pass, exact, causal as a flag.")
+head(s, "the operator", "What attention computes")
+bw, bh = Inches(1.9), Inches(0.82)
+y0 = Inches(2.6)
+step, gap_a = Inches(2.25), Inches(0.32)
+chips = ["Q, K   [N \u00d7 D]", "S = Q K^T / \u221ad", "softmax, row-wise",
+         "P  [N \u00d7 N]", "O = PV   [N \u00d7 D]"]
+fills = [(PANEL, INK), (TEAL, PAPER), (SEA, PAPER), (PANEL, INK), (MINT, DEEP)]
+for i, (t, (fill, fg)) in enumerate(zip(chips, fills)):
+    chip(s, Inches(0.75) + i * step, y0, bw, bh, t, fill=fill, fg=fg, size=13.5)
+    if i < 4:
+        arrow(s, Inches(0.75) + i * step + bw + Inches(0.03), y0 + Inches(0.22),
+              gap_a, Inches(0.38))
 
-# ---- 4 memory bound
-s = new(prs)
-header(s, "why fusion is not optional", "The naive version is memory-bound, not compute-bound")
-bullets(s, [
-    (0, "Naive = 3 kernels: compute S, write it to global memory, read it back for softmax, write P, read P for PV", ""),
-    (0, "S and P are [N × N] — at N = 4096, H = 8, fp16 that is 268 MB per tensor", ""),
-    (0, "≈ 1.07 GB of intermediate traffic, versus ~17 MB for the fused kernel", "b"),
-    (0, "Arithmetic intensity ≈ 64 FLOP/byte vs this card's ridge point ≈ 36 FLOP/byte", ""),
-    (1, "ridge point = peak FLOP/s ÷ peak bytes/s = 7 TFLOP/s ÷ 192 GB/s", "muted"),
-    (0, "Fusion removes the N² tensors from memory entirely — that is the design, not a tweak", "accent"),
-], size=17)
-caption(s, "Traffic is O(N²·D). No compiler trick saves you here; only not writing the matrix does.")
+chip(s, Inches(0.75), Inches(4.15), Inches(7.4), Inches(0.72),
+     "S and P are N \u00d7 N \u2192  fused: never written to memory",
+     fill=WARN, size=15)
+chip(s, Inches(8.45), Inches(4.15), Inches(4.15), Inches(0.72),
+     "one kernel, not three", fill=PANEL, fg=INK, size=14)
 
-# ---- 5 variant 1
-s = new(prs)
-header(s, "variant 1", "Vanilla scaled dot-product — the reference that justifies everything")
-table(s,
-      ["", "CUDA C++", "cuTile"],
-      [["Shape", "3 launches: GEMM → row-softmax kernel → GEMM",
-        "3 @ct.kernel functions"],
-       ["Softmax", "one block per row, two passes (max, then sum), block reduction",
-        "ct.max(s, axis=1) → ct.exp2 → ct.sum(s, axis=1)"],
-       ["Cost", "two N×N tensors round-trip through HBM",
-        "the same — cuTile does not stop you being naive"],
-       ["Tells us", "why fusion is needed, measured not asserted",
-        "the abstraction is not a performance guarantee"]],
-      widths=[0.12, 0.44, 0.44], size=12.5, row_h=0.86)
-caption(s, "Neither model is saved by its abstraction at this rung. That is the point.")
+tb(s, Inches(0.75), Inches(5.55), Inches(11.4), Inches(1.1),
+   ["FLOPs = 4 \u00b7 B \u00b7 H \u00b7 N\u00b2 \u00b7 D  \u2014 two matmuls, each 2N\u00b2D per head.",
+    "Softmax is a row reduction. Causal masks j > i; the mask goes before the softmax."],
+   size=15, color=INK, line=1.3)
 
-# ---- 6 variant 2
+# 4 ---------------------------------------------------------------- memory bound
 s = new(prs)
-header(s, "variant 2", "Causal — the mask is trivial, skipping the work is not")
-bullets(s, [
-    (0, "A token may not attend to the future. Mask j > i before the softmax.", ""),
-    (0, "CUDA C++: bound the k-loop at the diagonal, plus an if on the diagonal tile", ""),
-    (1, "cost: blocks now have wildly unequal runtimes — load balance becomes your problem", "muted"),
-    (0, "cuTile:  ct.where(cols[None,:] <= rows[:,None], s, -1e30)", "b"),
-    (1, "broadcast gives the [BQ × BK] mask for free; the loop bound is just a dynamic range", "muted"),
-    (0, "Numerics: -inf is correct but exp2(-inf − -inf) = NaN. Use fp32 -1e30.", "warn"),
-], size=17)
-caption(s, "FLOPs halve — but only if you actually skip the tiles. A rectangular grid over a "
-           "triangle does all the work at ~50% efficiency.")
+head(s, "why fusion is not optional", "The naive version is memory-bound")
+stats = [("\u2248 1.07 GB", "intermediate traffic\nat N=4096, H=8, fp16", WARN),
+         ("\u2248 17 MB", "the same attention, fused", MINT),
+         ("32 FLOP/B", "intensity vs a ridge of \u2248104", TEAL)]
+for i, (big, sub, col) in enumerate(stats):
+    x = Inches(0.75 + i * 4.0)
+    card = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, Inches(2.35),
+                              Inches(3.55), Inches(2.15))
+    card.fill.solid()
+    card.fill.fore_color.rgb = PANEL
+    card.line.fill.background()
+    card.shadow.inherit = False
+    card.adjustments[0] = 0.06
+    tb(s, x + Inches(0.3), Inches(2.62), Inches(3.0), Inches(0.8), big,
+       size=40, bold=True, color=col, font=HEAD)
+    tb(s, x + Inches(0.3), Inches(3.52), Inches(3.0), Inches(0.8),
+       sub.split("\n"), size=12.5, color=MUTED, line=1.2)
 
-# ---- 7 variant 3 algorithm
+listy(s, Inches(0.75), Inches(4.85), Inches(11.4), [
+    (0, "Naive = three kernels: compute S, write it, read it for softmax, write P, read P for PV."),
+    (0, "The brief says HBM; this laptop has GDDR6. Same measurement \u2014 device/DRAM bytes."),
+    (1, "Peaks here are nominal. Measured peaks are step 1 of the benchmark plan, because "
+        "the ridge point moves with them."),
+], size=15, gap=11)
+note(s, "Traffic is O(N\u00b2\u00b7D). No compiler trick saves you \u2014 only not writing the matrix does.")
+
+# 5 ---------------------------------------------------------------- variants 1-2
 s = new(prs)
-header(s, "variant 3 — the algorithm", "Online softmax: a softmax you can compute in slices")
-code(s, [
-    "m = -1e30 (finite!),  l = 0,  O = 0        # running max, running denominator, accumulator",
+head(s, "variants 1 and 2", "The baseline, and the mask that must also skip work")
+table(s, ["", "Vanilla SDPA", "Causal"],
+      [["New problem", "none \u2014 it exists to be beaten",
+        "a mask is trivial; not doing the masked work is not"],
+       ["CUDA C++", "3 launches, row-softmax with two passes",
+        "bound the k-loop at the diagonal + an if on the diagonal tile \u2192 unequal block runtimes"],
+       ["cuTile", "3 @ct.kernel; ct.max/ct.exp2/ct.sum over a tile",
+        "ct.where(cols <= rows) \u2014 the [BQ\u00d7BK] mask is a broadcast; loop bound is a dynamic range"],
+       ["Cost", "two N\u00d7N tensors round-trip through memory",
+        "FLOPs halve \u2014 only if you skip the tiles"]],
+      widths=[0.14, 0.42, 0.44], size=12.5, rowh=0.92)
+note(s, "Neither model is saved by its abstraction here. Vanilla is the reference point, "
+        "not something anyone ships.")
+
+# 6 ---------------------------------------------------------------- algorithm
+s = new(prs)
+head(s, "variant 3 \u2014 the algorithm",
+     "Online softmax: a softmax you can compute in slices")
+code(s, Inches(0.75), Inches(2.3), Inches(7.55), Inches(3.75), [
+    "m = -1e30 (finite!), l = 0, O = 0     // fp32",
     "for each KV tile k:",
-    "    S_k   = Q_tile · K_kᵀ · scale        # scale = log2(e)/√D  -> base-2 exp",
+    "    S_k   = Q_tile @ K_kT * scale     // scale first",
     "    m_new = max(m, rowmax(S_k))",
-    "    P_k   = exp2(S_k − m_new)",
-    "    α     = exp2(m − m_new)              # rescale factor for everything already summed",
-    "    l     = l·α + rowsum(P_k)",
-    "    O     = O·α + P_k · V_k              # rescale BEFORE accumulate",
+    "    P_k   = exp2(S_k - m_new)",
+    "    a     = exp2(m - m_new)           // rescale",
+    "    l     = l*a + rowsum(P_k)",
+    "    O     = O*a + P_k @ V_k           // a BEFORE",
     "    m     = m_new",
     "O = O / l",
-], size=12.5, h=Inches(2.55))
-caption(s, "The problem: softmax is a global row reduction, but a tile holds only a slice of the row."
-           "  So the reduction must be streaming and correct under rescaling.  (Milakov 2018 · Dao 2022)")
+], size=11.5, title="the whole algorithm")
+listy(s, Inches(8.6), Inches(2.4), Inches(4.0), [
+    (0, "Softmax is a global row reduction \u2014 but a tile holds one slice of the row."),
+    (0, "So the running max and denominator must be correct under rescaling. That is what a does."),
+    (1, "Milakov 2018 for the recurrence; Dao 2022 for fusing it into PV."),
+], size=14, gap=13)
 
-# ---- 8 the centrepiece
+# 7 ---------------------------------------------------------------- comparison
 s = new(prs)
-header(s, "variant 3 — two implementations", "The same algorithm, two costs")
-text(s, Inches(0.75), Inches(1.9), Inches(4.9), Inches(0.3),
-     "CUDA C++  —  what you write by hand", size=12, bold=True, color=WARN)
-bullets(s, [
-    (1, "K, V tiles in shared memory, double-buffered with cp.async", ""),
-    (1, "O accumulator in registers: ~64 regs/thread", ""),
-    (1, "the α rescale applied by hand to those registers", ""),
-    (1, "matched mma.sync fragment layouts between QKᵀ and PV", ""),
-    (1, "swizzled smem to kill bank conflicts on the K transpose", ""),
-    (1, "every line is a place to be 3× off the roofline", "warn"),
-], y=Inches(2.3), w=Inches(4.75), size=13, gap=0.13)
+head(s, "variant 3 \u2014 two implementations", "The same algorithm, two costs")
+code(s, Inches(0.75), Inches(2.25), Inches(6.05), Inches(3.55), [
+    "__shared__ half sk[2][BK][D+8];   // padded",
+    "float m[16], l[16], acc[16][VP];  // 32/thread",
+    "for (int k = 0; k < nk; ++k) {",
+    "  cp_async(sk[k&1], Kg + k*BK*D);",
+    "  __syncthreads();",
+    "  mma_m16n8k16(s, q_frag,",
+    "               ldmatrix_x4(sk[k&1]), 0.f);",
+    "  for (int t = 0; t < 16; ++t) {   // rows",
+    "    float mx = rowmax(s[t]) * scale;",
+    "    mx = __shfl_xor_sync(~0u, mx, 1);",
+    "    mx = __shfl_xor_sync(~0u, mx, 2);",
+    "    float mn = fmaxf(m[t], mx);",
+    "    float a  = exp2f(m[t] - mn);",
+    "    m[t] = mn; l[t] *= a;",
+    "    for (int v = 0; v < VP; ++v)",
+    "      acc[t][v] *= a;   // a by hand",
+    "  }",
+    "}",], size=9.5, title="CUDA C++ \u2014 what you write by hand")
 
-code(s, [
-    "@ct.kernel",
-    "def flash_fwd(Q, K, V, O, scale, causal, BQ, BK, D):",
-    "    qi = ct.bid(0)",
-    "    q   = Q.tiled_view((BQ,D)).load((qi,0))",
-    "    m   = ct.full((BQ,), -1e30, ct.float32)",
-    "    l   = ct.zeros((BQ,), ct.float32)",
-    "    acc = ct.zeros((BQ,D), ct.float32)",
-    "    for k in range(num_kv_tiles(causal, qi)):",
-    "        s = ct.mma(q, ct.transpose(K.load(k)), zeros)",
-    "        if causal: s = masked(s, qi, k)",
-    "        m_new = ct.maximum(m, ct.max(s, axis=1))",
-    "        p = ct.exp2(s*scale - expand(m_new, 1))",
-    "        a = ct.exp2(m - m_new)",
-    "        l = l*a + ct.sum(p, axis=1)",
-    "        acc = ct.mma(p.as_f16(), V.load(k), acc*expand(a,1))",
-    "        m = m_new",
-    "    ct.store(O, (qi,), (acc/expand(l,1)).as_f16())",
-], x=Inches(5.75), y=Inches(1.9), w=Inches(6.85), h=Inches(3.25), size=9.5)
-caption(s, "In CUDA C++ you pay for fusion in shared-memory orchestration. In cuTile you pay for it "
-           "in tile shapes. The abstraction moves the work — it does not remove it.")
+code(s, Inches(7.0), Inches(2.25), Inches(5.6), Inches(3.55), [
+    "q = ct.load(Q, (bh, qi, 0),",
+    "            (1, BQ, D))",
+    "for k in range(last):",
+    "  kt = ct.load(K, (bh, k, 0),",
+    "               (BK, D))",
+    "  v  = ct.load(V, (bh, k, 0),",
+    "               (BK, D))",
+    "  s = ct.mma(q, ct.transpose(kt),",
+    "             zeros) * scale",
+    "  if causal:",
+    "    s = ct.where(keep, s, -1e30)",
+    "  m_new = ct.maximum(m, ct.max(s, 2))",
+    "  p = ct.exp2(s - expand(m_new, 2))",
+    "  a = ct.exp2(m - m_new)",
+    "  l = l*a + ct.sum(p, 2)",
+    "  acc = ct.mma(p.half(), v,",
+    "               acc * expand(a, 2))",
+    "  m = m_new",
+], size=9.5, title="cuTile \u2014 what the compiler owns")
+note(s, "CUDA C++: you pay in shared memory, registers and warp shuffles. cuTile: you pay in "
+        "tile shapes. The abstraction moves the work \u2014 it does not remove it.")
 
-# ---- 9 what fusion buys
+# 8 ---------------------------------------------------------------- payoff
 s = new(prs)
-header(s, "variant 3 — the payoff", "Fusion drops traffic 60×, but latency only ~3×")
-bullets(s, [
-    (0, "Traffic:  O(N²·D)  →  O(N·D)", "b"),
-    (1, "at N = 4096: ~1.07 GB moved → ~17 MB", "muted"),
-    (0, "Latency: ~5.6 ms → ~1.7 ms", "b"),
-    (1, "because once the traffic wall is gone you hit the compute wall:", "muted"),
-    (1, "4·B·H·N²·D = 34 GFLOP at ~20 TFLOP/s fp16 ≈ 1.7 ms", "muted"),
-    (0, "Fusion converts a memory-bound kernel into a compute-bound one", "accent"),
-    (0, "Prediction to test: the crossover is at N ≈ 512 — below it, launch overhead and low "
-        "occupancy dominate and fusion buys little", ""),
-], size=17)
-caption(s, "Anyone reporting a 60× speedup is quoting the traffic number as if it were the time. "
-           "The honest figure is 3× time for 60× traffic.")
+head(s, "variant 3 \u2014 the payoff", "Traffic drops 60\u00d7. Time drops about 3\u00d7.")
+data = CategoryChartData()
+data.categories = ["DRAM traffic", "Latency"]
+data.add_series("Fused vs naive, N = 4096", (60.0, 3.2))
+ch = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.75), Inches(2.3),
+                        Inches(6.6), Inches(3.9), data).chart
+ch.has_title = True
+ch.chart_title.text_frame.text = "reduction factor (roofline bounds, not measurements)"
+ch.chart_title.text_frame.paragraphs[0].runs[0].font.size = Pt(12)
+ch.has_legend = False
+plot = ch.plots[0]
+plot.has_data_labels = True
+plot.data_labels.show_value = True
+plot.data_labels.number_format = '0.0"\u00d7"'
+plot.data_labels.number_format_is_linked = False
+plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+plot.data_labels.font.size = Pt(14)
+plot.data_labels.font.bold = True
+plot.series[0].format.fill.solid()
+plot.series[0].format.fill.fore_color.rgb = TEAL
+ch.value_axis.visible = False
+ch.value_axis.has_major_gridlines = False
+ch.category_axis.tick_labels.font.size = Pt(12)
+ch.category_axis.format.line.color.rgb = RGBColor(0xD5, 0xE3, 0xE5)
 
-# ---- 10 GQA
+listy(s, Inches(7.6), Inches(2.45), Inches(5.0), [
+    (0, "Once the traffic wall is gone you hit the compute wall: 34 GFLOP at ~20 TFLOP/s \u2248 1.7 ms."),
+    (0, "These are roofline bounds \u2014 the honest framing is a factor, not a stopwatch result."),
+    (0, "Prediction: crossover at N \u2248 512. Below it, launch overhead wins."),
+], size=14.5, gap=13)
+note(s, "Anyone reporting 60\u00d7 speedup is quoting the traffic number as if it were the time.")
+
+# 9 ---------------------------------------------------------------- GQA
 s = new(prs)
-header(s, "variant 4", "GQA: one line of index math vs one broadcast")
-text(s, Inches(0.75), Inches(1.95), Inches(11.6), Inches(0.4),
-     "H query heads share H_kv key/value heads.  group  G = H / H_kv   (MQA is the G = 1 case)",
-     size=15, color=MUTED)
-table(s,
-      ["", "CUDA C++", "cuTile"],
+head(s, "variant 4", "GQA: one line of index maths vs one broadcast")
+tb(s, Inches(0.75), Inches(2.25), Inches(11.4), Inches(0.5),
+   "H query heads share H_kv key/value heads.   group G = H / H_kv.   "
+   "MQA is H_kv = 1, i.e. G = H;  G = 1 is plain MHA.",
+   size=15, color=MUTED)
+table(s, ["", "CUDA C++", "cuTile"],
       [["Head map", "int kv_head = q_head / G;  plus hand-written strides",
-        "stack the group into the leading tile dim"],
+        "stack the group into the leading tile dimension"],
        ["Reuse", "you decide whether to fuse G query heads into one block so the KV tile "
-        "loads into shared memory once — and you reason about L2 reuse",
-        "ct.mma broadcasts the 2-D KV tile across a 3-D query tile "
-        "(documented 3-D × 2-D broadcast)"],
-       ["Legality", "any G", "G must be a power of two — 2, 4, 8 are, by construction"]],
-      widths=[0.12, 0.44, 0.44], size=12, row_h=1.0, y=Inches(2.55))
-caption(s, "This is the slide that decides the argument: the tile abstraction turns a scheduling "
-           "decision into a type.  Whether that is a win is exactly what the project measures.")
+        "loads into shared memory once \u2014 and you reason about L2 reuse",
+        "ct.mma broadcasts a 2-D KV tile across a 3-D query tile"],
+       ["Legality", "any G", "G must be a power of two \u2014 unverified"]],
+      widths=[0.13, 0.44, 0.43], size=12.5, rowh=1.02, y=Inches(3.0))
+note(s, "The most persuasive slide in the deck \u2014 and the first to be cut. Decode is a different "
+        "shape (N_q=1 against long M_kv), so it breaks the N=M contract and stays out of scope.")
 
-# ---- 11 decode
+# 10 --------------------------------------------------------------- knobs
 s = new(prs)
-header(s, "variant 4 — the other regime", "Decode: N = 1, and the roofline flips")
-bullets(s, [
-    (0, "Prefill (N large): two big matmuls, compute-bound, fusion wins", ""),
-    (0, "Decode (N = 1): one long skinny GEMV against the KV cache", "b"),
-    (1, "a handful of FLOP per byte ⇒ ~0% of peak FLOP/s, ~100% of bandwidth", "muted"),
-    (0, "So the metric changes: report achieved GB/s, not TFLOP/s", "accent"),
-    (0, "And it is the one place naive and fused converge again — there is no N² tensor to avoid", ""),
-    (0, "Worth one microbenchmark: it is where 'achieved memory bandwidth' from the brief "
-        "becomes a real number instead of a phrase", ""),
-], size=17)
-
-# ---- 12 window + cross
-s = new(prs)
-header(s, "variants 5 and 6", "Where the abstraction holds — and where it breaks")
-table(s,
-      ["", "Sliding window  j ∈ [i−W, i]", "Cross-attention  N ≠ M"],
-      [["New problem", "the grid is a band: two bounds, two-sided mask, ragged edges",
-        "two different sequence lengths ⇒ two tilings"],
-       ["CUDA C++", "k_start = max(0,(q_begin−W)/BK), k_end = min(n,(q_end+BK−1)/BK) + an if",
-        "natural: a 1-D block of 128 threads handles a row"],
-       ["cuTile", "same two integers as a dynamic range() — barely longer than causal",
-        "honest cost: a BQ=64 tile computing one query row wastes 63/64 of it"],
-       ["Verdict", "tests the abstraction on irregular work; if the edge evaporates, that is a result",
-        "the first rung where CUDA C++ wins"]],
-      widths=[0.13, 0.44, 0.43], size=12, row_h=0.92)
-caption(s, "A comparison with no case where the hand-written version wins is an advertisement, not an analysis.")
-
-# ---- 13 knobs
-s = new(prs)
-header(s, "the tunability axis, measured on my hardware",
-       "Two-thirds of cuTile's tuning surface is inert on my GPU")
-table(s,
-      ["Knob", "CUDA C++", "cuTile", "Active on sm_86?"],
-      [["tile / block shape", "free (any 3-D block)", "BQ, BK, D — powers of two only", "yes"],
+head(s, "the tunability axis, on my hardware",
+     "Three of the eight knobs do nothing on this GPU")
+table(s, ["Knob", "CUDA C++", "cuTile", "Available on sm_86?"],
+      [["tile / block shape", "free (any 3-D block)", "BQ, BK, D \u2014 powers of two", "yes"],
        ["threads / warps", "free", "num_worker_warps, occupancy", "yes"],
-       ["smem layout, swizzle", "hand-written", "hidden", "—"],
-       ["async pipelining", "cp.async, double buffer", "hidden (compiler)", "—"],
+       ["smem layout, swizzle", "hand-written", "hidden", "yes (CUDA only)"],
+       ["async pipelining", "cp.async, double buffer", "hidden (compiler)", "yes (CUDA only)"],
        ["prefetch hint", "manual", "latency = 1..10", "yes"],
-       ["TMA", "no such instruction", "allow_tma", "inert (pre-Hopper)"],
-       ["thread-block clusters", "no", "num_ctas", "inert (sm_90+)"],
-       ["fp8 / block-scaled MMA", "no", "mma_scaled", "raises TileUnsupportedFeatureError"]],
-      widths=[0.24, 0.22, 0.26, 0.28], size=11.5, row_h=0.46)
-caption(s, "RTX 3050 Laptop = compute capability 8.6 (Ampere). No TMA, no clusters, no FP8. "
-           "The abstraction's portability is delivered by exactly the mechanism that empties its tuning surface.")
+       ["TMA", "sm_90+ only", "allow_tma", "no"],
+       ["thread-block clusters", "sm_90+ only", "num_ctas", "no"],
+       ["FP8 / block-scaled MMA", "Ada+ / Blackwell", "mma_scaled", "no"]],
+      widths=[0.26, 0.22, 0.26, 0.26], size=12, rowh=0.46)
+note(s, "RTX 3050 Laptop \u2014 compute capability 8.6, Ampere. Three of eight knobs are unreachable "
+        "in *either* model; cuTile simply exposes ones CUDA does not name. That is the portability finding.")
 
-# ---- 14 plan
+# 11 --------------------------------------------------------------- plan
 s = new(prs)
-header(s, "the plan", "OP2 only, three code files, eight days")
-table(s,
-      ["Day", "Date", "Work", "Done when"],
-      [["0", "Fri 30 Oct", "environment gate + this deck", "smoke test passes; deck sent"],
-       ["1", "Sat 31 Oct", "bench.py + fp64 and SDPA references", "one command produces the CSV"],
-       ["2", "Sun 1 Nov", "fused kernel in cuTile", "matches fp64 in fp16 tolerance"],
-       ["3", "Mon 2 Nov", "fused kernel in CUDA C++", "same; both rows in CSV"],
-       ["4", "Tue 3 Nov", "tile / block sweep", "best config recorded for both"],
-       ["5", "Wed 4 Nov", "Nsight Compute (incl. --section Tile)", "profiles/ populated"],
-       ["6", "Thu 5 Nov", "report draft, five axes", "no placeholders"],
-       ["7", "Fri 6 Nov", "report final, reproduction script", "stranger regenerates figures"],
+head(s, "the plan", "One operator, two kernels, three files, eight days")
+table(s, ["Day", "Date", "Work", "Done when"],
+      [["0", "Fri 30 Oct", "environment gate + this deck", "smoke test green; deck sent"],
+       ["1", "Sat 31 Oct", "bench.py: fp64 + SDPA rows", "one command \u2192 CSV"],
+       ["2", "Sun 1 Nov", "fused kernel in cuTile", "matches fp64 within fp16 tolerance"],
+       ["3", "Mon 2 Nov", "fused kernel in CUDA C++ (v1, no cp.async)", "both rows in CSV"],
+       ["4", "Tue 3 Nov", "tile / block sweep; ablation toggles", "best config recorded"],
+       ["5", "Wed 4 Nov", "Nsight Compute, incl. --section Tile", "profiles/ populated"],
+       ["6", "Thu 5 Nov", "report: numbers only", "no placeholders"],
+       ["7", "Fri 6 Nov", "report final, 3-command README", "reproducible"],
        ["8", "Sat 7 Nov", "submit", "submitted"]],
-      widths=[0.06, 0.16, 0.42, 0.36], size=11.5, row_h=0.44)
-caption(s, "Scope is deliberately minimal: one fused kernel per model, causal as a flag. "
-           "GQA and sliding window are stretch — attempted only after both kernels are correct and benchmarked.")
+      widths=[0.06, 0.15, 0.45, 0.34], size=11.5, rowh=0.42, y=Inches(2.25))
+tb(s, Inches(0.75), Inches(6.45), Inches(11.4), Inches(0.7),
+   "Pre-cut if a day slips: cp.async (v1 is synchronous) \u2192 GQA \u2192 the timed bug hunt. "
+   "The fused kernel in both models is the only thing that must exist.",
+   size=13, color=MUTED)
 
-# ---- 15 questions
+# 12 --------------------------------------------------------------- questions
 s = new(prs)
-header(s, "what I need from this meeting", "Three questions")
-bullets(s, [
-    (0, "OP2 only — can you confirm it in writing? The brief's comparison section says "
-        "\"choose either OP1 or OP2\", but its artifact list still says \"both operators\".", ""),
-    (0, "Does 07 November hold, given we restarted from this survey on 14 October?", ""),
-    (0, "Is a fused MHA kernel with causal as a flag the right variant — or would you rather "
-        "I push into GQA before 07 Nov?", ""),
-], y=Inches(2.1), size=18, gap=0.5)
-text(s, Inches(0.75), Inches(5.1), Inches(11.6), Inches(1.2),
-     "What I am deliberately not doing: GEMM, paged attention, MLA, the backward pass, "
-     "and a hand-written naive baseline (PyTorch's MATH backend already is one, on my card, for free).",
-     size=14, color=MUTED, line=1.25)
+bg2 = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, W, H)
+bg2.fill.solid()
+bg2.fill.fore_color.rgb = DEEP
+bg2.line.fill.background()
+bg2.shadow.inherit = False
+tile_motif(s, 11.1, 4.7, cell=0.34, gap=0.08, rows=4, cols=4,
+           filled=((0, 0), (2, 2)), color=TEAL)
 
-# ---------------------------------------------------------------- save
+tb(s, Inches(0.85), Inches(0.6), Inches(10.0), Inches(0.35),
+   "WHAT I NEED FROM THIS MEETING", size=11.5, bold=True, color=MINT)
+tb(s, Inches(0.85), Inches(1.0), Inches(10.4), Inches(0.9), "Three questions",
+   size=38, bold=True, color=PAPER, font=HEAD)
+
+qs = [("1", "OP2 only \u2014 can you confirm it in writing?",
+       "The brief's comparison section says \u201cchoose either OP1 or OP2\u201d; its artifact "
+       "list still says \u201cboth operators\u201d."),
+      ("2", "Does 07 November hold?",
+       "The brief's own 10/21 and 10/28 milestones have passed; we restarted from this "
+       "survey on 14 October."),
+      ("3", "Is fused MHA the right variant to finish?",
+       "Or should GQA come before the deadline? GQA is the cleanest demonstration of the "
+       "two models' difference.")]
+y = 2.15
+for n, q, sub in qs:
+    chip(s, Inches(0.85), Inches(y - 0.02), Inches(0.42), Inches(0.42), n,
+         fill=SEA, size=14)
+    tb(s, Inches(1.5), Inches(y), Inches(10.0), Inches(0.4), q, size=19,
+       bold=True, color=PAPER)
+    tb(s, Inches(1.5), Inches(y + 0.42), Inches(9.6), Inches(0.5), sub, size=13,
+       color=RGBColor(0xA9, 0xC6, 0xCC), line=1.2)
+    y += 1.25
+
+tb(s, Inches(0.85), Inches(6.15), Inches(10.6), Inches(0.9),
+   ["Not doing: GEMM \u00b7 paged attention \u00b7 MLA \u00b7 backward pass \u00b7 a hand-written naive "
+    "baseline", "(PyTorch's MATH backend is that baseline, on my card, for free)."],
+   size=12.5, color=RGBColor(0x86, 0xA6, 0xAD), line=1.3)
+
+# ------------------------------------------------------------------ save
 out = Path(__file__).resolve().parent.parent / "docs" / "op2-attention-slides.pptx"
 prs.core_properties.title = "Attention in CUDA C++ and cuTile"
 prs.core_properties.author = "Surya Harshith (cs23b010)"
-prs.core_properties.subject = "CS-6023 GPU Programming — Project OP2"
+prs.core_properties.subject = "CS-6023 GPU Programming - Project OP2"
 prs.save(out)
 print(f"wrote {out}  ({len(prs.slides)} slides, {out.stat().st_size/1024:.0f} KB)")
