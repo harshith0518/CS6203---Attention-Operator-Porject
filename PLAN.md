@@ -211,8 +211,8 @@ Re-dated from **Fri 30 Oct** (gate slipped by the package install). Days 1–4 a
 | 7 | Fri 6 Nov | report final, cleanup, one-command reproduction | stranger regenerates every figure |
 | 8 | **Sat 7 Nov** | **submit**, buffer | submitted |
 
-- **Day 0 is now two jobs**, not one: the gate *and* the deck. The deck is Pravin's stated price
-  for the next conversation, so it does not get deferred behind code.
+- **Day 0 is two jobs**: the gate *and* the deck — Pravin's price for the next conversation, so
+  it does not queue behind code.
 - The **CUDA Toolkit download (~8 GB, 20–40 min) is async** — start it before writing `bench.py`
   and it costs nothing. It is only needed on day 3 (`nvcc`) and day 5 (`ncu`), never for the gate.
 - Lost a day ⇒ cut the debuggability experiment, then figure 4. **Never** cut day 4 (profiles) or
