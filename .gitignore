@@ -29,6 +29,9 @@ Thumbs.db
 # pip temp dirs left behind when an install is interrupted
 pip-*
 
+# project-local temp dir: pip's build tracker must not use the DSH session TEMP
+tmp/
+
 # ---------------------------------------------------------------- private
 # Local agent context: working state, rules, traps. Not published.
 AGENTS.md

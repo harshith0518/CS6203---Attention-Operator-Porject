@@ -69,6 +69,18 @@ Write-Host "  If output ever freezes mid-step, the console has a text selection 
 Write-Host "  Click inside the window and press Esc. The process is blocked, not slow." -ForegroundColor DarkGray
 if ($Rebuild) { Write-Host "  -Rebuild: the existing .venv will be deleted first." -ForegroundColor Yellow }
 
+# ------------------------------------------------------------ temp directory
+# pip creates its build tracker in TEMP. A DSH session rewrites TEMP/TMP to a
+# per-session folder that other shells cannot use, and pip then reports
+# "No usable temporary directory found" and installs nothing. Pin it to a
+# directory we own, before any pip call.
+$tmpDir = Join-Path $root 'tmp'
+if (-not (Test-Path $tmpDir)) { New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null }
+$env:TEMP = $tmpDir
+$env:TMP = $tmpDir
+$env:TMPDIR = $tmpDir
+Write-Host ("temp dir : {0}" -f $tmpDir) -ForegroundColor DarkGray
+
 # ================================================================ 1 GPU/driver
 Step 1 "GPU and driver" "2-5 s"
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
@@ -194,6 +206,14 @@ try {
     Ok "venv is writable"
 } catch {
     Failed "cannot write inside .venv - re-run with -Rebuild"
+    exit 1
+}
+# pip dies early and confusingly if it cannot make a temp dir; prove it here
+& $venvPy -c "import tempfile; tempfile.mkdtemp()" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Ok "temp directory usable"
+} else {
+    Failed "python cannot create a temp directory in $tmpDir - pip will fail"
     exit 1
 }
 Done
