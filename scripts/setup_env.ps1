@@ -266,9 +266,12 @@ $code = Invoke-Pip -PipArgs (@('install', '--upgrade', 'pip') + $pipCommon) -Wha
 if ($code -eq 0) { Ok "pip ready"; Done } else { Warn2 "pip upgrade skipped, continuing"; Done }
 
 # ============================================================ 7 cuda-tile
-Step 7 "installing cuda-tile[tileiras] (the big one, ~0.7-1 GB)" "2-15 min"
-$code = Invoke-Pip -PipArgs (@('install', '--upgrade', 'cuda-tile[tileiras]') + $pipCommon) -What "cuda-tile + TileIR compiler + ptxas + libnvvm"
-if ($code -eq 0) { Ok "cuda-tile installed"; Done } else { Failed "cuda-tile install failed - paste the pip lines above"; exit 1 }
+# nvrtc is NOT part of the tileiras extra, and CuPy needs it for every
+# elementwise op (a + b, cp.abs). Without it the tile kernel runs and then
+# verification dies in cupy with "Failure finding known nvrtc DLL".
+Step 7 "installing cuda-tile[tileiras] + nvrtc (the big one, ~0.9-1.2 GB)" "2-15 min"
+$code = Invoke-Pip -PipArgs (@('install', '--upgrade', 'cuda-tile[tileiras]', 'cuda-toolkit[nvrtc]') + $pipCommon) -What "cuda-tile + TileIR compiler + nvrtc"
+if ($code -eq 0) { Ok "cuda-tile + nvrtc installed"; Done } else { Failed "cuda-tile install failed - paste the pip lines above"; exit 1 }
 
 # ========================================================= 8 numpy + cupy
 Step 8 "installing numpy and cupy-cuda13x (~0.3-0.5 GB)" "1-8 min"

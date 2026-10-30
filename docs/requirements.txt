@@ -15,6 +15,11 @@
 # the venv, so cuTile runs WITHOUT a system-wide CUDA Toolkit installed.
 cuda-tile[tileiras]>=1.2
 
+# The tileiras extra does NOT include nvrtc. CuPy needs it for every elementwise
+# operation, so without this line the tile kernel runs and then verification dies
+# with "Failure finding known nvrtc DLL". Keep the version in step with the toolkit.
+cuda-toolkit[nvrtc]
+
 # --- host-side arrays / numerics --------------------------------------------
 numpy>=1.26
 
