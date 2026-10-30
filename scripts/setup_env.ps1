@@ -1,27 +1,21 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    CS-6023 project preflight + cuTile environment setup.
+    CS-6023 cuTile environment setup, with step checkpoints.
 
 .DESCRIPTION
-    Audits the machine against the hard prerequisites for cuTile Python
-    (GPU compute capability 8.x+, driver r580+, CUDA Toolkit 13.2+),
-    creates a local .venv, installs cuda-tile[tileiras], and runs a smoke test.
+    Nine numbered steps. Each prints its number, percentage, a progress bar, what it is
+    doing right now, and how long it should take. Every network call is bounded, so a bad
+    connection fails in seconds instead of hanging.
 
-    It never modifies drivers or system software. Anything it cannot fix, it
-    reports and stops.
-
-.NOTES
-    Written for Windows PowerShell 5.1 (no pwsh 7 dependency).
-    If script execution is blocked, run:
-        powershell -ExecutionPolicy Bypass -File .\scripts\setup_env.ps1
+    Prints a per-step timing table at the end.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\scripts\setup_env.ps1
-    powershell -ExecutionPolicy Bypass -File .\scripts\setup_env.ps1 -SkipInstall
+    powershell -ExecutionPolicy Bypass -File .\scripts\setup_env.ps1 -AuditOnly
 #>
 param(
-    [switch]$SkipInstall,
+    [switch]$AuditOnly,
     [string]$PythonExe = ""
 )
 
@@ -30,212 +24,217 @@ $root = Split-Path -Parent $PSScriptRoot
 $venv = Join-Path $root '.venv'
 $script:fail = @()
 $script:warn = @()
+$script:times = @()
+$TOTAL = 9
+$script:started = Get-Date
 
-function Section($t) { Write-Host "`n=== $t ===" -ForegroundColor Cyan }
-function Ok($t)      { Write-Host "  [OK]   $t" -ForegroundColor Green }
-function Warn2($t)   { Write-Host "  [WARN] $t" -ForegroundColor Yellow; $script:warn += $t }
-function Bad($t)     { Write-Host "  [FAIL] $t" -ForegroundColor Red;    $script:fail += $t }
-
-# Runs an interpreter given as @('exe', 'arg1', ...) plus extra args.
-function Run-Py {
-    param([string[]]$Argv, [string[]]$ArgList)
-    if ($Argv.Count -gt 1) {
-        & $Argv[0] $Argv[1..($Argv.Count - 1)] @ArgList
-    } else {
-        & $Argv[0] @ArgList
-    }
+# ------------------------------------------------------------------ machinery
+function Bar([int]$pct, [int]$width = 24) {
+    $fill = [int][math]::Floor($pct / 100.0 * $width)
+    ('#' * $fill) + ('.' * ($width - $fill))
 }
 
-Write-Host "CS-6023 cuTile environment check" -ForegroundColor White
-Write-Host "Workspace: $root"
+function Step([int]$n, [string]$name, [string]$expected) {
+    $pct = [int]((($n - 1) / $TOTAL) * 100)
+    Write-Host ''
+    Write-Host ("[{0}/{1}] {2,3}%  {3}  {4}" -f $n, $TOTAL, $pct, (Bar $pct), $name) -ForegroundColor Cyan
+    Write-Host ("        expected: {0}" -f $expected) -ForegroundColor DarkGray
+    if ($Host.Name -eq 'ConsoleHost') {
+        Write-Progress -Activity "CS-6023 setup" -Status ("step {0}/{1}: {2}" -f $n, $TOTAL, $name) -PercentComplete $pct
+    }
+    $script:stepStart = Get-Date
+    $script:stepName = $name
+}
 
-# ---------------------------------------------------------------- GPU / driver
-Section "GPU and driver"
+function Done() {
+    $s = [math]::Round(((Get-Date) - $script:stepStart).TotalSeconds, 1)
+    Write-Host ("        done in {0}s" -f $s) -ForegroundColor Green
+    $script:times += [pscustomobject]@{ Step = $script:stepName; Seconds = $s }
+}
+
+function Failed([string]$why) {
+    $s = [math]::Round(((Get-Date) - $script:stepStart).TotalSeconds, 1)
+    Write-Host ("        FAILED after {0}s: {1}" -f $s, $why) -ForegroundColor Red
+    $script:fail += $why
+    $script:times += [pscustomobject]@{ Step = $script:stepName; Seconds = $s }
+}
+
+function Ok($t)    { Write-Host ("        ok   {0}" -f $t) -ForegroundColor Green }
+function Warn2($t) { Write-Host ("        warn {0}" -f $t) -ForegroundColor Yellow; $script:warn += $t }
+function Bad($t)   { Write-Host ("        FAIL {0}" -f $t) -ForegroundColor Red; $script:fail += $t }
+
+Write-Host "CS-6023 cuTile environment check" -ForegroundColor White
+Write-Host ("workspace: {0}" -f $root)
+Write-Host ("started  : {0}" -f $script:started.ToString("HH:mm:ss"))
+
+# ================================================================ 1 GPU/driver
+Step 1 "GPU and driver" "2-5 s"
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     $rows = & nvidia-smi --query-gpu=name,driver_version,memory.total,compute_cap --format=csv,noheader
-    if ($LASTEXITCODE -ne 0 -or -not $rows) {
-        Bad "nvidia-smi present but returned nothing (is the driver loaded?)"
-    }
     foreach ($row in ($rows -split "`r?`n" | Where-Object { $_.Trim() })) {
         $f = $row.Split(',') | ForEach-Object { $_.Trim() }
         if ($f.Count -lt 4) { continue }
-        $name = $f[0]; $drv = $f[1]; $mem = $f[2]; $cc = $f[3]
-        Ok "GPU          : $name"
-        Ok "VRAM         : $mem"
-        Ok "Compute cap. : $cc"
-
-        if ($cc -match '^(\d+)') {
-            $ccMajor = [int]$Matches[1]
-            if ($ccMajor -lt 8) {
-                Bad "compute capability $cc is below 8.x -- cuTile Python will not run on this GPU"
-            } elseif ($ccMajor -eq 8) {
-                Ok  "compute capability 8.x is supported (Ampere/Ada support landed in cuTile 1.2.0, CTK 13.2)"
-                Warn2 "CC 8.x has no TMA, no thread-block clusters and no FP8 MMA, so the cuTile knobs allow_tma / num_ctas / mma_scaled are INERT here. Plan the tunability experiment around tile shapes instead -- this is itself a report finding."
-            } else {
-                Ok "compute capability $cc is supported"
-            }
+        Ok ("{0}  |  {1}  |  CC {2}" -f $f[0], $f[2], $f[3])
+        if ($f[3] -match '^(\d+)' -and [int]$Matches[1] -lt 8) {
+            Bad ("compute capability {0} is below 8.x - cuTile will not run" -f $f[3])
         }
-
         $drvMajor = 0
-        if ($drv -match '^(\d+)') { $drvMajor = [int]$Matches[1] }
-        Ok "Driver       : $drv"
+        if ($f[1] -match '^(\d+)') { $drvMajor = [int]$Matches[1] }
         if ($drvMajor -lt 580) {
-            Bad "driver $drv is older than r580 -- cuTile Python CANNOT run. Install driver >= 580 (>= r580.126.09 / r582.16 if you also want detailed ncu profiling of cuTile kernels on Windows), reboot, and re-run this script."
+            Bad ("driver {0} < 580 - cuTile cannot run" -f $f[1])
         } elseif ($drvMajor -lt 582) {
-            Warn2 "driver $drv runs cuTile fine, but detailed Nsight Compute profiling of cuTile kernels on Windows needs >= r582.16."
+            Ok ("driver {0} - runs fine; >= 582.16 for detailed ncu on cuTile" -f $f[1])
         } else {
-            Ok "driver $drv satisfies both the runtime (>=580) and cuTile profiling (>=582.16) requirements"
+            Ok ("driver {0} - satisfies runtime and profiling" -f $f[1])
         }
     }
-} else {
-    Bad "nvidia-smi not found -- no NVIDIA driver, or not on PATH"
-}
+} else { Bad "nvidia-smi not found" }
+if ($script:fail.Count -eq 0) { Done }
 
-# ---------------------------------------------------------------- CUDA toolkit
-Section "CUDA Toolkit (needed only for the hand-written CUDA C++ half)"
+# ============================================================ 2 toolkit/MSVC
+Step 2 "CUDA Toolkit and MSVC" "1-3 s"
 if (Get-Command nvcc -ErrorAction SilentlyContinue) {
-    $nvOut = (& nvcc --version) -join "`n"
-    if ($nvOut -match 'release (\d+)\.(\d+)') {
-        $maj = [int]$Matches[1]; $min = [int]$Matches[2]
-        Ok "nvcc         : CUDA $maj.$min"
-        if ($maj -lt 13 -or ($maj -eq 13 -and $min -lt 2)) {
-            Bad "CUDA $maj.$min is older than 13.2 -- install CUDA Toolkit 13.2+ (Ampere cuTile support starts there)"
-        } else {
-            Ok "CUDA $maj.$min satisfies the 13.2+ requirement"
-        }
-    } else {
-        Warn2 "nvcc present but the version string could not be parsed"
+    $nv = (& nvcc --version) -join "`n"
+    if ($nv -match 'release (\d+)\.(\d+)') {
+        Ok ("nvcc: CUDA {0}.{1}" -f $Matches[1], $Matches[2])
     }
 } else {
-    Warn2 "nvcc not on PATH. The cuTile half can still run via 'pip install cuda-tile[tileiras]', but the CUDA C++ half needs CUDA Toolkit 13.2+ installed."
+    Warn2 "nvcc not on PATH - only the CUDA C++ half needs it, not this gate"
 }
-
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 if (Test-Path $vswhere) {
-    $vspath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if ($vspath) { Ok "MSVC         : $vspath" }
-    else         { Warn2 "Visual Studio present but the 'Desktop development with C++' workload is not installed; nvcc needs an MSVC host compiler." }
-} else {
-    Warn2 "No Visual Studio / Build Tools found; nvcc on Windows needs an MSVC host compiler."
-}
+    $vsp = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if ($vsp) { Ok "MSVC present" } else { Warn2 "VS found but no C++ workload" }
+} else { Warn2 "no MSVC - nvcc would have no host compiler" }
+Done
 
-# ---------------------------------------------------------------- disk
-Section "Disk space (CUDA Toolkit needs ~8 GB)"
+# ============================================================== 3 disk + py
+Step 3 "disk space and Python" "1-3 s"
 try {
-    $vol = Get-Volume -DriveLetter C -ErrorAction Stop
-    $freeGb = [math]::Round($vol.SizeRemaining / 1GB, 1)
-    if ($freeGb -lt 12) { Warn2 "only $freeGb GB free on C:" } else { Ok "$freeGb GB free on C:" }
-} catch {
-    Warn2 "could not read disk space (permissions); check manually"
-}
+    $free = [math]::Round((Get-Volume -DriveLetter C -ErrorAction Stop).SizeRemaining / 1GB, 1)
+    if ($free -lt 12) { Warn2 ("only {0} GB free" -f $free) } else { Ok ("{0} GB free" -f $free) }
+} catch { Warn2 "could not read disk space" }
 
-# ---------------------------------------------------------------- python
-Section "Python 3.10-3.14"
-# Prefer 3.12: widest wheel coverage for cupy-cuda13x / torch / cuda-tile.
-$candidates = @()
-if ($PythonExe) { $candidates += ,@($PythonExe) }
-$candidates += ,@('py', '-3.12')
-$candidates += ,@('py', '-3.13')
-$candidates += ,@('py', '-3.14')
-$candidates += ,@('py', '-3')
-$candidates += ,@('python')
-
-$pyArgv = $null
-$pyver = $null
-foreach ($cand in $candidates) {
-    if (-not (Get-Command $cand[0] -ErrorAction SilentlyContinue)) { continue }
+$cands = @()
+if ($PythonExe) { $cands += , @($PythonExe) }
+$cands += , @('py', '-3.12')
+$cands += , @('py', '-3')
+$cands += , @('python')
+$script:pyArgv = $null
+foreach ($c in $cands) {
+    if (-not (Get-Command $c[0] -ErrorAction SilentlyContinue)) { continue }
     try {
-        $v = (Run-Py -Argv $cand -ArgList @('-c', "import sys;print('%d.%d'%sys.version_info[:2])") 2>$null)
-        if ($LASTEXITCODE -eq 0 -and $v) {
-            $pyArgv = $cand
-            $pyver = ($v | Select-Object -First 1).Trim()
-            break
-        }
+        if ($c.Count -gt 1) { $v = (& $c[0] $c[1..($c.Count - 1)] -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null) }
+        else { $v = (& $c[0] -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null) }
+        if ($LASTEXITCODE -eq 0 -and $v) { $script:pyArgv = $c; Ok ("python {0} via '{1}'" -f $v.Trim(), ($c -join ' ')); break }
     } catch { }
 }
-
-if (-not $pyArgv) {
-    Bad "no usable python found; pass -PythonExe 'C:\path\to\python.exe'"
-} else {
-    $maj = [int]$pyver.Split('.')[0]; $min = [int]$pyver.Split('.')[1]
-    if ($maj -ne 3 -or $min -lt 10 -or $min -gt 14) {
-        Bad "python $pyver is outside the 3.10-3.14 range supported by cuTile Python"
-    } else {
-        Ok "python $pyver via '$($pyArgv -join ' ')'"
-        if ($min -ge 14) {
-            Warn2 "python $pyver works for cuTile, but binary wheels for cupy-cuda13x / torch may lag on 3.14. If an install below fails, re-run with -PythonExe pointing at a 3.12 interpreter."
-        }
-    }
-}
-
-# ---------------------------------------------------------------- summary
-Section "Preflight summary"
-if ($script:fail.Count -eq 0) {
-    Write-Host "  No blockers found." -ForegroundColor Green
-} else {
-    Write-Host "  $($script:fail.Count) blocker(s):" -ForegroundColor Red
-    $script:fail | ForEach-Object { Write-Host "    - $_" -ForegroundColor Red }
-}
-if ($script:warn.Count -gt 0) {
-    Write-Host "  $($script:warn.Count) warning(s):" -ForegroundColor Yellow
-    $script:warn | ForEach-Object { Write-Host "    - $_" -ForegroundColor Yellow }
-}
+if (-not $script:pyArgv) { Bad "no usable python found" }
+Done
 
 if ($script:fail.Count -gt 0) {
-    Write-Host "`nStopping: fix the blockers above and re-run. Do not start writing code yet." -ForegroundColor Red
+    Write-Host ''
+    Write-Host "Stopping before anything is downloaded. Fix the failures above and re-run." -ForegroundColor Red
     exit 1
 }
-if ($SkipInstall) {
-    Write-Host "`n-SkipInstall given; stopping after the audit." -ForegroundColor Yellow
+
+# ================================================================ 4 network
+Step 4 "PyPI reachability (this is where it hung before)" "<= 12 s, hard timeout"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$probe = $null
+try {
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $probe = Invoke-WebRequest -Uri "https://pypi.org/pypi/cuda-tile/json" -TimeoutSec 12 -UseBasicParsing
+    $sw.Stop()
+    Ok ("pypi.org answered HTTP {0} in {1} ms" -f $probe.StatusCode, $sw.ElapsedMilliseconds)
+    Done
+} catch {
+    Failed ("cannot reach pypi.org - {0}" -f $_.Exception.Message.Split([Environment]::NewLine)[0])
+    Write-Host ''
+    Write-Host "  Nothing was installed, because nothing can be. Check, in this order:" -ForegroundColor Yellow
+    Write-Host "    1. Are you behind a proxy?  `$env:HTTPS_PROXY  and  pip config list" -ForegroundColor Yellow
+    Write-Host "    2. Does a browser open https://pypi.org/simple/ ?" -ForegroundColor Yellow
+    Write-Host "    3. Try once by hand:  .\.venv\Scripts\python.exe -m pip download numpy -d `$env:TEMP\t" -ForegroundColor Yellow
+    Write-Host "    4. On campus wifi, the mirror may be faster:  -i https://pypi.org/simple" -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host "  A stalled install is a network problem, not a code problem. Do not debug the script." -ForegroundColor Yellow
+    exit 3
+}
+
+if ($AuditOnly) {
+    Write-Host ''
+    Write-Host "-AuditOnly given: environment checks passed, nothing installed." -ForegroundColor Yellow
     exit 0
 }
 
-# ---------------------------------------------------------------- venv + install
-Section "Virtual environment"
+# ==================================================================== 5 venv
+Step 5 "virtual environment" "5-20 s"
 $venvPy = Join-Path $venv 'Scripts\python.exe'
 if (Test-Path $venvPy) {
-    Ok "reusing existing venv at $venv"
+    Ok "reusing .venv"
 } else {
-    Write-Host "  creating $venv ..."
-    Run-Py -Argv $pyArgv -ArgList @('-m', 'venv', $venv)
-    if (-not (Test-Path $venvPy)) { Bad "venv creation failed"; exit 1 }
-    Ok "created $venv"
+    Write-Host "        creating .venv ..."
+    if ($script:pyArgv.Count -gt 1) { & $script:pyArgv[0] $script:pyArgv[1..($script:pyArgv.Count - 1)] -m venv $venv }
+    else { & $script:pyArgv[0] -m venv $venv }
+    if (-not (Test-Path $venvPy)) { Failed "venv creation failed"; exit 1 }
+    Ok "created .venv"
 }
+Done
 
-Write-Host "`n  upgrading pip ..."
-& $venvPy -m pip install --upgrade pip --quiet
-if ($LASTEXITCODE -ne 0) { Warn2 "pip upgrade failed; continuing" }
+# ------------------------------------------------------------ pip settings
+$env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
+$env:PIP_DEFAULT_TIMEOUT = "15"
+$env:PIP_RETRIES = "2"
+$pipCommon = @('--no-input', '--timeout', '15', '--retries', '2', '--progress-bar', 'on')
 
-Section "Installing packages"
-foreach ($p in @('cuda-tile[tileiras]', 'numpy', 'cupy-cuda13x')) {
-    Write-Host "  pip install $p ..."
-    & $venvPy -m pip install --upgrade $p
-    if ($LASTEXITCODE -ne 0) { Bad "pip install $p failed" }
+# =============================================================== 6 pip upgrade
+Step 6 "upgrading pip" "5-20 s"
+& $venvPy -m pip install --upgrade pip @pipCommon
+if ($LASTEXITCODE -eq 0) { Ok "pip up to date"; Done } else { Failed "pip upgrade failed - see the lines above"; exit 1 }
+
+# ============================================================ 7 cuda-tile
+Step 7 "installing cuda-tile[tileiras] (the big one, ~0.7-1 GB)" "2-15 min"
+Write-Host "        downloading the TileIR compiler + ptxas + libnvvm ..." -ForegroundColor DarkGray
+& $venvPy -m pip install --upgrade "cuda-tile[tileiras]" @pipCommon
+if ($LASTEXITCODE -eq 0) { Ok "cuda-tile installed"; Done } else { Failed "cuda-tile install failed"; exit 1 }
+
+# ========================================================= 8 numpy + cupy
+Step 8 "installing numpy and cupy-cuda13x (~0.3-0.5 GB)" "1-8 min"
+& $venvPy -m pip install --upgrade numpy cupy-cuda13x @pipCommon
+if ($LASTEXITCODE -eq 0) {
+    Ok "numpy + cupy installed"
+} else {
+    Warn2 "cupy-cuda13x failed - not fatal, the harness can use torch instead"
+    & $venvPy -m pip install --upgrade numpy @pipCommon
 }
-if ($script:fail.Count -gt 0) {
-    Write-Host "`nInstall failures above. Common causes:" -ForegroundColor Red
-    Write-Host "  - no wheel for this Python version (retry with a 3.12 interpreter)"
-    Write-Host "  - cupy-cuda13x unavailable: drop cupy and use torch instead (see PLAN.md section 3.2)"
-    exit 1
-}
+Done
 
-# ---------------------------------------------------------------- smoke test
-Section "Smoke test (the real gate)"
+# ============================================================= 9 smoke test
+Step 9 "smoke test - the actual gate" "10-40 s (JIT compiles on first run)"
 & $venvPy (Join-Path $PSScriptRoot 'smoke_cutile.py')
 $rc = $LASTEXITCODE
+if ($rc -eq 0) { Ok "cuTile runs on this GPU"; Done } else { Failed "smoke test exit $rc" }
 
-Write-Host ""
-if ($rc -eq 0) {
-    Write-Host "=====================================================" -ForegroundColor Green
-    Write-Host " GATE PASSED - cuTile runs on this GPU." -ForegroundColor Green
-    Write-Host "=====================================================" -ForegroundColor Green
-    Write-Host "Next: save the evidence, then start PLAN.md day 1:"
+# ------------------------------------------------------------------ summary
+if ($Host.Name -eq 'ConsoleHost') { Write-Progress -Activity "CS-6023 setup" -Completed }
+$total = [math]::Round(((Get-Date) - $script:started).TotalSeconds, 1)
+
+Write-Host ''
+Write-Host "==================== summary ====================" -ForegroundColor White
+$script:times | ForEach-Object { "  {0,-52} {1,7}s" -f $_.Step, $_.Seconds }
+Write-Host ("  {0,-52} {1,7}s" -f "TOTAL", $total)
+Write-Host ''
+
+if ($rc -eq 0 -and $script:fail.Count -eq 0) {
+    Write-Host "GATE PASSED - cuTile runs on this GPU." -ForegroundColor Green
+    Write-Host "Next:"
     Write-Host "  .\.venv\Scripts\python.exe -m pip freeze > docs\requirements.lock.txt"
+    Write-Host "  then start PLAN.md day 1 (bench.py)."
 } else {
-    Write-Host "=====================================================" -ForegroundColor Red
-    Write-Host " GATE FAILED - cuTile did not run." -ForegroundColor Red
-    Write-Host "=====================================================" -ForegroundColor Red
-    Write-Host "Check the driver version and compute capability first."
-    Write-Host "If both satisfy the requirements and this still fails, switch to a cloud/lab GPU today (PLAN.md R1/R2)."
+    Write-Host "GATE NOT PASSED." -ForegroundColor Red
+    if ($script:fail.Count -gt 0) { $script:fail | ForEach-Object { Write-Host ("  - {0}" -f $_) -ForegroundColor Red } }
+    Write-Host ""
+    Write-Host "If the smoke test failed but everything installed, the problem is cuTile on"
+    Write-Host "this GPU, not the environment - paste the smoke-test output."
 }
-exit $rc
+exit $(if ($rc -eq 0 -and $script:fail.Count -eq 0) { 0 } else { 1 })
