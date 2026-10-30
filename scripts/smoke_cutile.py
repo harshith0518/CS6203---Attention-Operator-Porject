@@ -16,7 +16,19 @@ Run:  .venv\\Scripts\\python.exe scripts\\smoke_cutile.py
 """
 
 import sys
+import os
 import traceback
+from pathlib import Path
+
+# CuPy and cuTile each want a cache directory. Their defaults live under the user
+# profile (~/.cupy, ~/.cache/cuda_tile), which this machine refuses to create
+# ("Access is denied: C:\Users\ASUS\.cupy"), so pin both inside the project
+# before either library is imported. setdefault leaves an explicit setting alone.
+_CACHE_ROOT = Path(__file__).resolve().parent.parent / "tmp"
+for _env, _sub in (("CUPY_CACHE_DIR", "cupy"), ("CUDA_TILE_CACHE_DIR", "cuda_tile")):
+    _dir = _CACHE_ROOT / _sub
+    _dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault(_env, str(_dir))
 
 
 def hr(title):

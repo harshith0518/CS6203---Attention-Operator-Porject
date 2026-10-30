@@ -81,6 +81,14 @@ $env:TMP = $tmpDir
 $env:TMPDIR = $tmpDir
 Write-Host ("temp dir : {0}" -f $tmpDir) -ForegroundColor DarkGray
 
+# CuPy warns "CUDA path could not be detected" and the TileIR compiler wants a
+# CUDA root. The wheels put one in site-packages, so point both at it.
+$cudaRoot = Join-Path $root '.venv\Lib\site-packages\nvidia\cu13'
+if (Test-Path $cudaRoot) { $env:CUDA_PATH = $cudaRoot }
+$env:CUPY_CACHE_DIR = Join-Path $tmpDir 'cupy'
+$env:CUDA_TILE_CACHE_DIR = Join-Path $tmpDir 'cuda_tile'
+New-Item -ItemType Directory -Force $env:CUPY_CACHE_DIR, $env:CUDA_TILE_CACHE_DIR | Out-Null
+
 # ================================================================ 1 GPU/driver
 Step 1 "GPU and driver" "2-5 s"
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
