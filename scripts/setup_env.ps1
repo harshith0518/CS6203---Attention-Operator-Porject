@@ -16,6 +16,7 @@
 #>
 param(
     [switch]$AuditOnly,
+    [switch]$Rebuild,
     [string]$PythonExe = ""
 )
 
@@ -39,9 +40,6 @@ function Step([int]$n, [string]$name, [string]$expected) {
     Write-Host ''
     Write-Host ("[{0}/{1}] {2,3}%  {3}  {4}" -f $n, $TOTAL, $pct, (Bar $pct), $name) -ForegroundColor Cyan
     Write-Host ("        expected: {0}" -f $expected) -ForegroundColor DarkGray
-    if ($Host.Name -eq 'ConsoleHost') {
-        Write-Progress -Activity "CS-6023 setup" -Status ("step {0}/{1}: {2}" -f $n, $TOTAL, $name) -PercentComplete $pct
-    }
     $script:stepStart = Get-Date
     $script:stepName = $name
 }
@@ -66,6 +64,10 @@ function Bad($t)   { Write-Host ("        FAIL {0}" -f $t) -ForegroundColor Red;
 Write-Host "CS-6023 cuTile environment check" -ForegroundColor White
 Write-Host ("workspace: {0}" -f $root)
 Write-Host ("started  : {0}" -f $script:started.ToString("HH:mm:ss"))
+Write-Host ""
+Write-Host "  If output ever freezes mid-step, the console has a text selection (QuickEdit)." -ForegroundColor DarkGray
+Write-Host "  Click inside the window and press Esc. The process is blocked, not slow." -ForegroundColor DarkGray
+if ($Rebuild) { Write-Host "  -Rebuild: the existing .venv will be deleted first." -ForegroundColor Yellow }
 
 # ================================================================ 1 GPU/driver
 Step 1 "GPU and driver" "2-5 s"
@@ -170,6 +172,11 @@ if ($AuditOnly) {
 # ==================================================================== 5 venv
 Step 5 "virtual environment" "5-20 s"
 $venvPy = Join-Path $venv 'Scripts\python.exe'
+if ($Rebuild -and (Test-Path $venv)) {
+    Write-Host "        -Rebuild given: removing the old .venv ..." -ForegroundColor Yellow
+    Remove-Item $venv -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $venv) { Failed ".venv could not be removed - close any terminal using it, then retry"; exit 1 }
+}
 if (Test-Path $venvPy) {
     Ok "reusing .venv"
 } else {
@@ -179,33 +186,70 @@ if (Test-Path $venvPy) {
     if (-not (Test-Path $venvPy)) { Failed "venv creation failed"; exit 1 }
     Ok "created .venv"
 }
+# a venv that cannot be written to is the failure mode that looks like a hang
+try {
+    $probe = Join-Path $venv 'write-probe.tmp'
+    Set-Content $probe "x" -ErrorAction Stop
+    Remove-Item $probe -Force -ErrorAction SilentlyContinue
+    Ok "venv is writable"
+} catch {
+    Failed "cannot write inside .venv - re-run with -Rebuild"
+    exit 1
+}
 Done
 
 # ------------------------------------------------------------ pip settings
 $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 $env:PIP_DEFAULT_TIMEOUT = "15"
 $env:PIP_RETRIES = "2"
-$pipCommon = @('--no-input', '--timeout', '15', '--retries', '2', '--progress-bar', 'on')
+$pipCommon = @('--no-input', '--timeout', '15', '--retries', '2', "--progress-bar=on")
+
+# Runs pip with a start stamp and a live heartbeat, so "no output" is never
+# ambiguous. If the heartbeat stops too, the console is frozen (see the
+# QuickEdit note at the top), not pip.
+function Invoke-Pip {
+    param([string[]]$PipArgs, [string]$What)
+    $t0 = Get-Date
+    Write-Host ("        {0}  starting at {1}" -f $What, $t0.ToString("HH:mm:ss")) -ForegroundColor DarkGray
+    $job = Start-Job -ScriptBlock {
+        param($py, $a)
+        & $py -m pip @a 2>&1
+        $LASTEXITCODE
+    } -ArgumentList $venvPy, $PipArgs
+    while ($job.State -notin @('Completed', 'Failed', 'Stopped')) {
+        Start-Sleep -Seconds 20
+        if ($job.State -notin @('Completed', 'Failed', 'Stopped')) {
+            $waited = [int]((Get-Date) - $t0).TotalSeconds
+            Write-Host ("        ... {0}s elapsed, still working. If this line stops appearing, the console is frozen: click the window and press Esc." -f $waited) -ForegroundColor DarkGray
+        }
+    }
+    $out = Receive-Job $job -Wait -AutoRemoveJob
+    $code = 0
+    if ($out.Count -gt 0) {
+        $code = $out[-1]
+        $out[0..($out.Count - 1)] | Where-Object { $_ -ne $code } | ForEach-Object { Write-Host ("        $_") }
+    }
+    return $code
+}
 
 # =============================================================== 6 pip upgrade
-Step 6 "upgrading pip" "5-20 s"
-& $venvPy -m pip install --upgrade pip @pipCommon
-if ($LASTEXITCODE -eq 0) { Ok "pip up to date"; Done } else { Failed "pip upgrade failed - see the lines above"; exit 1 }
+Step 6 "upgrading pip (optional - a failure here is not fatal)" "5-20 s"
+$code = Invoke-Pip -PipArgs (@('install', '--upgrade', 'pip') + $pipCommon) -What "pip upgrade"
+if ($code -eq 0) { Ok "pip ready"; Done } else { Warn2 "pip upgrade skipped, continuing"; Done }
 
 # ============================================================ 7 cuda-tile
 Step 7 "installing cuda-tile[tileiras] (the big one, ~0.7-1 GB)" "2-15 min"
-Write-Host "        downloading the TileIR compiler + ptxas + libnvvm ..." -ForegroundColor DarkGray
-& $venvPy -m pip install --upgrade "cuda-tile[tileiras]" @pipCommon
-if ($LASTEXITCODE -eq 0) { Ok "cuda-tile installed"; Done } else { Failed "cuda-tile install failed"; exit 1 }
+$code = Invoke-Pip -PipArgs (@('install', '--upgrade', 'cuda-tile[tileiras]') + $pipCommon) -What "cuda-tile + TileIR compiler + ptxas + libnvvm"
+if ($code -eq 0) { Ok "cuda-tile installed"; Done } else { Failed "cuda-tile install failed - paste the pip lines above"; exit 1 }
 
 # ========================================================= 8 numpy + cupy
 Step 8 "installing numpy and cupy-cuda13x (~0.3-0.5 GB)" "1-8 min"
-& $venvPy -m pip install --upgrade numpy cupy-cuda13x @pipCommon
-if ($LASTEXITCODE -eq 0) {
+$code = Invoke-Pip -PipArgs (@('install', '--upgrade', 'numpy', 'cupy-cuda13x') + $pipCommon) -What "numpy + cupy-cuda13x"
+if ($code -eq 0) {
     Ok "numpy + cupy installed"
 } else {
     Warn2 "cupy-cuda13x failed - not fatal, the harness can use torch instead"
-    & $venvPy -m pip install --upgrade numpy @pipCommon
+    $code = Invoke-Pip -PipArgs (@('install', '--upgrade', 'numpy') + $pipCommon) -What "numpy only"
 }
 Done
 
@@ -216,7 +260,6 @@ $rc = $LASTEXITCODE
 if ($rc -eq 0) { Ok "cuTile runs on this GPU"; Done } else { Failed "smoke test exit $rc" }
 
 # ------------------------------------------------------------------ summary
-if ($Host.Name -eq 'ConsoleHost') { Write-Progress -Activity "CS-6023 setup" -Completed }
 $total = [math]::Round(((Get-Date) - $script:started).TotalSeconds, 1)
 
 Write-Host ''
@@ -238,3 +281,4 @@ if ($rc -eq 0 -and $script:fail.Count -eq 0) {
     Write-Host "this GPU, not the environment - paste the smoke-test output."
 }
 exit $(if ($rc -eq 0 -and $script:fail.Count -eq 0) { 0 } else { 1 })
+
