@@ -58,6 +58,9 @@ O = O / l
 - **Two numerics decisions** (report's numerics section): fold `log2(e)/√D` into the scale ⇒
   base-2 `exp2`, one instruction; start `m` at finite `-1e30`, since `-inf` makes the first
   `α = exp2(-inf − -inf) = NaN`. In fp16 `-1e30` overflows ⇒ keep `m`/masks **fp32**.
+- **Build order**: match the fp64 reference on the **non-causal** path first, then enable
+  `causal`. One moving part at a time — the mask is the second most common source of silent
+  wrong answers after the tail.
 
 ### 2.2 cuTile — `cutile/attn/flash.py`
 
@@ -123,6 +126,14 @@ nvcc -arch=sm_86 -O3 --use_fast_math -lineinfo flash.cu -o flash.exe
   test proving the stabilisation is real, not decorative).
 - **Latency at the target sequence length**: target **N = 2048** (prefill regime); evidence =
   p50/p90 at N=2048 plus the full latency-vs-N curve, figure 1.
+- **Terminology**: the brief says HBM, but this laptop's 4 GB is **GDDR6** (6001 MHz DDR →
+  12 Gbps, 128-bit → 192 GB/s). Same measurement, correct name: **device/DRAM bytes**. Metrics:
+  `dram__bytes_read.sum`, `dram__bytes_write.sum`,
+  `dram__throughput.avg.pct_of_peak_sustained_elapsed` — confirm locally with
+  `ncu --query-metrics | findstr dram__bytes`.
+- **cuTile-specific profiling**: `ncu --section Tile` reports launch config, execution info and
+  GPU resource usage for **Tile IR** kernels — the official analogue of Launch/Occupancy for the
+  cuTile side (Nsight Compute Profiling Guide, *Sets and Sections*).
 
 **Protocol — identical for both models:**
 
