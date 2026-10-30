@@ -24,6 +24,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Office lock files (~$foo.pptx while a document is open)
+~$*
+# pip temp dirs left behind when an install is interrupted
+pip-*
+
 # ---------------------------------------------------------------- private
 # Local agent context: working state, rules, traps. Not published.
 AGENTS.md

@@ -114,6 +114,17 @@ def flash_fwd(Q, K, V, O, scale: ct.Constant[float], causal: ct.Constant[bool],
 nvcc -arch=sm_86 -O3 --use_fast_math -lineinfo flash.cu -o flash.exe
 ```
 
+### 2.4 Interfaces — how the three files talk
+
+- `flash.exe --N 1024 --causal 0 --BQ 64 --BK 64 --iters 200` → prints **one JSON line**:
+  `{model,N,causal,BQ,BK,p10_us,p50_us,p90_us,max_abs_err,nan}`.
+- `cutile/attn/flash.py` → `attn(q,k,v,causal)` for import, plus `__main__` emitting the **same
+  JSON** for the same flags.
+- `bench/bench.py` → shells out to the exe, imports the module, runs the fp64 + SDPA references,
+  and **owns the CSV**. It never times anything itself.
+- **Why self-timing**: launch overhead would swamp a ~100 µs kernel. Each side times its own
+  launch; the shared thing is the protocol (§3), not the code.
+
 ## 3. Measurement
 
 **The brief's three OP2 targets — mechanism → evidence:**
@@ -186,20 +197,27 @@ tflops, gbytes_s, ref_backend, ref_us, pct_of_ref, max_abs_err, notes
 
 ## 5. Schedule
 
+Re-dated from **Fri 30 Oct** (gate slipped by the package install). Days 1–4 are the critical path.
+
 | Day | Date | Work | Done when |
 |---|---|---|---|
-| 1 | Fri 30 Oct | driver ≥580 → packages → **gate green** | `smoke_cutile.py` passes |
-| 2 | Sat 31 Oct | `bench.py` + torch baselines | one command → CSV with torch rows |
-| 3 | Sun 1 Nov | `cutile/attn/flash.py` (fused, causal, tail) | matches torch fp64 in fp16 tolerance |
-| 4 | Mon 2 Nov | `cuda/attn/flash.cu` | same tolerance; both rows in CSV |
-| 5 | Tue 3 Nov | tile/block sweep; figures 1 + 3 | best config recorded both models |
-| 6 | Wed 4 Nov | `ncu` both kernels; figure 2; debuggability | `profiles/` populated |
-| 7 | Thu 5 Nov | report draft — all five axes | no placeholders |
-| 8 | Fri 6 Nov | report final, cleanup, one-command reproduction | stranger regenerates every figure |
-| 9 | Sat 7 Nov | **submit**, buffer | submitted |
+| 0 | **Fri 30 Oct** | **gate green** (pip → `.venv`) + **slides to Pravin**; kick off the CUDA Toolkit download in the background | `smoke_cutile.py` passes; deck sent |
+| 1 | Sat 31 Oct | `bench.py` + fp64 & SDPA reference rows | one command → CSV containing reference rows |
+| 2 | Sun 1 Nov | `cutile/attn/flash.py` — fused, `causal`, tail mask | matches fp64 within fp16 tolerance |
+| 3 | Mon 2 Nov | `cuda/attn/flash.cu` (needs `nvcc` from day 0's download) | same tolerance; both rows in CSV |
+| 4 | Tue 3 Nov | tile/block sweep; figures 1 + 3 | best config recorded, both models |
+| 5 | Wed 4 Nov | `ncu` both kernels (`--section Tile` for cuTile); figure 2 | `profiles/` populated |
+| 6 | Thu 5 Nov | debuggability experiment + report draft, all five axes | no placeholders |
+| 7 | Fri 6 Nov | report final, cleanup, one-command reproduction | stranger regenerates every figure |
+| 8 | **Sat 7 Nov** | **submit**, buffer | submitted |
 
-- Lost a day ⇒ cut the debuggability experiment, then figure 4. **Never** cut day 6 (profiles)
-  or day 7 (report) — 40% of the grade.
+- **Day 0 is now two jobs**, not one: the gate *and* the deck. The deck is Pravin's stated price
+  for the next conversation, so it does not get deferred behind code.
+- The **CUDA Toolkit download (~8 GB, 20–40 min) is async** — start it before writing `bench.py`
+  and it costs nothing. It is only needed on day 3 (`nvcc`) and day 5 (`ncu`), never for the gate.
+- Lost a day ⇒ cut the debuggability experiment, then figure 4. **Never** cut day 4 (profiles) or
+  day 6 (report) — those carry 40% of the grade.
+
 
 ## 6. Risks
 
