@@ -195,7 +195,7 @@ def notes(slide, s):
 
 prs = Presentation()
 prs.slide_width, prs.slide_height = W, H
-TOTAL = 11
+TOTAL = 12
 
 # ==================================================================== 1 title
 s = new(prs)
@@ -225,7 +225,7 @@ for i, (col, label) in enumerate([(CORAL, "CUDA C++"), (BLUE, "cuTile")]):
     r.font.name = MONO
     r.font.color.rgb = WHITE
     tf._txBody.find(qn("a:bodyPr")).set("vert", "vert270")
-metabar(s, "CS-6023 GPU KERNEL PROGRAMMING  \u00b7  IIT MADRAS", "01 / 11")
+metabar(s, "CS-6023 GPU KERNEL PROGRAMMING  \u00b7  IIT MADRAS", "01 / 12")
 vnav(s, 1, TOTAL)
 notes(s, "Seven days to the deadline. The deck is the whole picture: the operator, why it is a "
          "memory problem, which variant I build, what I build it with, how I will know it is "
@@ -269,7 +269,7 @@ txt(s, Inches(9.77), Inches(4.72), Inches(2.72),
     colour=DARKGREY, font=MONO, line=1.3)
 txt(s, Inches(9.55), Inches(5.8), Inches(3.2),
     "Ridge assumes 20 TFLOP/s, which I measure before quoting.", size=10, colour=MUTE, line=1.25)
-metabar(s, "THE BILL IS THE MATRIX, NOT THE MULTIPLY", "02 / 11")
+metabar(s, "THE BILL IS THE MATRIX, NOT THE MULTIPLY", "02 / 12")
 vnav(s, 2, TOTAL)
 notes(s, "Four passes over a 268 MB matrix is the 1.07 GB. The fused kernel never writes it. Do not "
          "read 64 times as a speedup: both time figures are roofline bounds and I measure the real "
@@ -278,7 +278,7 @@ notes(s, "Four passes over a 268 MB matrix is the 1.07 GB. The fused kernel neve
 # =================================================================== 3 trade
 s = new(prs)
 bg(s)
-chapter(s, "01  \u00b7  THE TRADE")
+chapter(s, "02  \u00b7  THE TRADE")
 head(s, M, Inches(1.0), Inches(10.0),
      [[("Fusion buys traffic and ", INK), ("spends control.", CORAL)]], size=34)
 
@@ -303,7 +303,7 @@ txt(s, M, Inches(6.08), Inches(11.9),
     "Same mathematics, same sizes, same protocol, same reference. A fair comparison is the "
     "deliverable, not a novelty.", size=12, colour=MUTE)
 metabar(s, "THE TILE MODEL TAKES THE SECOND COST OFF YOUR HANDS \u2014 WHETHER THAT PAYS IS THE QUESTION",
-        "03 / 11")
+        "03 / 12")
 vnav(s, 3, TOTAL)
 notes(s, "This is the trade in one line. Fusion is what makes attention fast and the price is "
          "control over memory. The two models divide that price differently, which is the project.")
@@ -311,7 +311,7 @@ notes(s, "This is the trade in one line. Fusion is what makes attention fast and
 # ================================================================ 4 variants
 s = new(prs)
 bg(s)
-chapter(s, "02  \u00b7  SIX VARIANTS, EACH IN BOTH MODELS")
+chapter(s, "03  \u00b7  SIX VARIANTS, EACH IN BOTH MODELS")
 head(s, M, Inches(0.98), Inches(11.0),
      [[("One gets built. ", INK), ("Five decide why.", CORAL)]], size=32)
 
@@ -350,7 +350,7 @@ pill(s, hero_x + cw - Inches(1.02), Inches(1.95) + Inches(0.18), "BUILD", fill=Y
 txt(s, M, Inches(6.42), Inches(9.5),
     "Only 03 runs end to end. Causal is a flag on it; 04 to 06 are read and reported.",
     size=11.5, colour=MUTE)
-metabar(s, "CUDA AND CUTILE COSTS ARE MY READING OF THE DOCS, NOT MEASUREMENTS", "04 / 11")
+metabar(s, "CUDA AND CUTILE COSTS ARE MY READING OF THE DOCS, NOT MEASUREMENTS", "04 / 12")
 vnav(s, 4, TOTAL)
 notes(s, "These are the six I would call common, and what each costs in each model. I build row "
          "three only, with causal as a flag. The middle columns are reading, not measurement.")
@@ -358,7 +358,7 @@ notes(s, "These are the six I would call common, and what each costs in each mod
 # ==================================================================== 5 code
 s = new(prs)
 bg(s)
-chapter(s, "03  \u00b7  THE KERNEL")
+chapter(s, "04  \u00b7  THE KERNEL")
 head(s, M, Inches(0.98), Inches(11.4),
      [[("The rescale is ", INK), ("32 registers", CORAL), (", or ", INK), ("one multiply.", BLUE)]],
      size=32)
@@ -426,7 +426,7 @@ txt(s, Inches(7.0), Inches(5.42), Inches(5.3), "one multiply on the accumulator"
 txt(s, M, Inches(5.82), Inches(11.8),
     "Both scale before the max, mask the tail, and rescale before accumulating. That order is what "
     "stops the denominator underflowing.", size=12, colour=MUTE, line=1.25)
-metabar(s, "SKETCHES, NOT COMPILED \u00b7 CUTILE API DETAILS UNVERIFIED UNTIL IT RUNS", "05 / 11")
+metabar(s, "SKETCHES, NOT COMPILED \u00b7 CUTILE API DETAILS UNVERIFIED UNTIL IT RUNS", "05 / 12")
 vnav(s, 5, TOTAL)
 notes(s, "Left is per thread, right is per tile. The rescale is 32 registers by hand on the left and "
          "one multiply on the right. Whether that one line costs speed is what the profiler tells "
@@ -435,7 +435,7 @@ notes(s, "Left is per thread, right is per tile. The rescale is 32 registers by 
 # =================================================================== 6 stack
 s = new(prs)
 bg(s)
-chapter(s, "04  \u00b7  THE STACK")
+chapter(s, "05  \u00b7  THE STACK")
 head(s, M, Inches(0.98), Inches(11.4),
      [[("Two lanes, one ", INK), ("cubin", BLUE), (".", INK)]], size=32)
 
@@ -462,18 +462,64 @@ insight(s, M, Inches(5.95), Inches(7.55), Inches(0.82), "WORTH SAYING",
         size=12)
 txt(s, Inches(8.45), Inches(5.98), Inches(4.3),
     ["Verified with pip list, nvidia-smi and a smoke test on this machine.",
-     "A cuTile kernel has compiled and run; the gate re-run is pending."],
+     "One probe kernel compiles and runs; the matmul check has not run yet."],
     size=10.5, colour=MUTE, line=1.3)
-metabar(s, "INSTALLED AND MEASURED HERE, NOT INTENDED", "06 / 11")
+metabar(s, "INSTALLED AND MEASURED HERE, NOT INTENDED", "06 / 12")
 vnav(s, 6, TOTAL)
 notes(s, "Two lanes, one destination. nvcc turns C++ into PTX and ptxas assembles it; cuTile goes "
          "through TileIR and tileiras. The versions are what is actually installed, and three "
          "features simply do not exist on this chip.")
 
+# =================================================================== 7 status
+s = new(prs)
+bg(s)
+chapter(s, "06  \u00b7  WHERE THIS STANDS")
+head(s, M, Inches(1.0), Inches(11.4),
+     [[("Built, running, ", INK), ("and next.", CORAL)]], size=34)
+
+cols = [
+    ("DONE", BLUE, WHITE, [
+        "Brief decoded, scope frozen to OP2",
+        "Six-variant survey written",
+        "Driver 617.42, compute capability 8.6",
+        "cuda-tile 1.7.0, toolchain 13.4.92",
+        "Probe harness written and debugged"]),
+    ("RUNNING NOW", YELLOW, INK, [
+        "Probe kernel compiles and runs",
+        "Three-check gate, re-run",
+        "Peak FLOP/s and DRAM bandwidth, measured",
+        "So the ridge figure is mine, not assumed"]),
+    ("NEXT 48 HOURS", CORAL, WHITE, [
+        "bench.py: fp64 reference, SDPA, CSV",
+        "cuTile kernel, causal as a flag",
+        "CUDA kernel v1, single-buffered",
+        "Then sweeps, profiles, report"]),
+]
+colw = Inches(3.86)
+for i, (label, fill, _fg, items) in enumerate(cols):
+    x = M + i * (colw + Inches(0.27))
+    pill(s, x, Inches(2.02), label, fill=fill, colour=WHITE if fill is not YELLOW else INK)
+    for j, item in enumerate(items):
+        y = Inches(2.6) + j * Inches(0.6)
+        rect(s, x, y + Inches(0.08), Inches(0.07), Inches(0.07), fill, "list marker")
+        txt(s, x + Inches(0.26), y, colw - Inches(0.32), item, size=13, colour=INK, line=1.25)
+
+rect(s, M, Inches(5.92), CW, Inches(0.8), INK, "deliverables bar")
+pill(s, M + Inches(0.22), Inches(6.14), "ON 07 NOV", fill=YELLOW, colour=INK, size=9.5,
+     h=Inches(0.26), pad=Inches(0.14))
+txt(s, M + Inches(1.95), Inches(6.15), Inches(9.9),
+    "Two kernels  \u00b7  one CSV behind every number  \u00b7  profiles for both  \u00b7  "
+    "a report that takes a side", size=12.5, colour=WHITE)
+metabar(s, "NO CLAIM IN THIS DECK OUTRUNS THE EVIDENCE", "07 / 12")
+vnav(s, 7, TOTAL)
+notes(s, "This is the honest position: the environment is finished and one probe kernel runs. The "
+         "kernels themselves start tomorrow. What you get on the seventh is written at the bottom, "
+         "so it can be held against me.")
+
 # ============================================================= 7 measurement
 s = new(prs)
 bg(s)
-chapter(s, "05  \u00b7  THE MEASUREMENT")
+chapter(s, "07  \u00b7  THE MEASUREMENT")
 head(s, M, Inches(0.98), Inches(11.4),
      [[("Four numbers, one protocol, ", INK), ("no stopwatch.", CORAL)]], size=32)
 
@@ -494,8 +540,8 @@ insight(s, M, Inches(5.28), Inches(11.9), Inches(1.35), "WHY THIS, AND NOT A SIM
          "Every row carries clock and temperature, because this is a laptop that throttles."],
         size=14)
 metabar(s, "ARTEFACTS: results.csv  \u00b7  profiles/*.ncu-rep  \u00b7  figs/*.pdf  \u00b7  report.md",
-        "07 / 11")
-vnav(s, 7, TOTAL)
+        "08 / 12")
+vnav(s, 8, TOTAL)
 notes(s, "The protocol exists to survive scrutiny. The flush sits outside the timed window; if it "
          "drifted inside, fusion would look free. Clock and temperature travel with every row "
          "because this machine throttles.")
@@ -503,7 +549,7 @@ notes(s, "The protocol exists to survive scrutiny. The flush sits outside the ti
 # ============================================================ 8 definition
 s = new(prs)
 bg(s)
-chapter(s, "06  \u00b7  DEFINITION OF DONE")
+chapter(s, "08  \u00b7  DEFINITION OF DONE")
 head(s, M, Inches(0.98), Inches(11.4),
      [[("Six checks. ", INK), ("Every one can fail.", CORAL)]], size=32)
 
@@ -547,8 +593,8 @@ pill(s, M + Inches(0.22), Inches(6.1), "HARD GATE", fill=YELLOW, colour=INK, siz
 txt(s, M + Inches(1.62), Inches(6.12), Inches(10.1),
     "No variant work starts until 01 to 04 pass on both kernels.", size=13, colour=WHITE)
 metabar(s, "TOLERANCE IS MY CHOICE \u2014 THE BRIEF PRESCRIBES NONE, SO IT IS STATED TO BE ARGUED WITH",
-        "08 / 11")
-vnav(s, 8, TOTAL)
+        "09 / 12")
+vnav(s, 9, TOTAL)
 notes(s, "Every row can fail, which is the point. The red sizes are the ones where a missing mask "
          "produces an error above tolerance. Row six is where a quarter of the grade sits, and it "
          "is writing, not code.")
@@ -556,7 +602,7 @@ notes(s, "Every row can fail, which is the point. The red sizes are the ones whe
 # ==================================================================== 9 plan
 s = new(prs)
 bg(s)
-chapter(s, "07  \u00b7  THE PLAN")
+chapter(s, "09  \u00b7  THE PLAN")
 head(s, M, Inches(0.98), Inches(10.4),
      [[("Seven days, five gates, ", INK), ("one cut list.", CORAL)]], size=32)
 
@@ -594,8 +640,8 @@ txt(s, M, Inches(5.85), Inches(11.9),
      "kernel per model, measured properly, with a report that takes a position.",
      "The cut list is written now so that decision is not made at midnight on the sixth."],
     size=12, colour=MUTE, line=1.3, space=5)
-metabar(s, "EIGHT COLUMNS BECAUSE DAY ZERO IS TODAY", "09 / 11")
-vnav(s, 9, TOTAL)
+metabar(s, "EIGHT COLUMNS BECAUSE DAY ZERO IS TODAY", "10 / 12")
+vnav(s, 10, TOTAL)
 notes(s, "I am behind the brief's milestones and this is the recovery plan. Two kernels, measured "
          "properly, a report that takes a position. The cut list exists now so that choice is not "
          "made at midnight.")
@@ -603,7 +649,7 @@ notes(s, "I am behind the brief's milestones and this is the recovery plan. Two 
 # ============================================================== 10 references
 s = new(prs)
 bg(s)
-chapter(s, "08  \u00b7  SOURCES")
+chapter(s, "10  \u00b7  SOURCES")
 head(s, M, Inches(0.98), Inches(9.0),
      [[("Where this ", INK), ("comes from.", CORAL)]], size=32)
 
@@ -635,8 +681,8 @@ txt(s, M, Inches(5.92), Inches(11.9),
     "Georgia Tech, Transformer Explainer", size=11.5, colour=INK)
 txt(s, M, Inches(6.3), Inches(11.9),
     "Repository, plan and decision log: " + REPO, size=10, colour=MUTE, font=MONO)
-metabar(s, "EVERY LINK OPENED WHILE PREPARING THIS DECK", "10 / 11")
-vnav(s, 10, TOTAL)
+metabar(s, "EVERY LINK OPENED WHILE PREPARING THIS DECK", "11 / 12")
+vnav(s, 11, TOTAL)
 notes(s, "Three sources carry the technical weight: the cuTile docs, TileGym's attention kernels and "
          "the FlashAttention paper. The rest is support and background, and the repo carries the "
          "plan with its decision log.")
@@ -644,7 +690,7 @@ notes(s, "Three sources carry the technical weight: the cuTile docs, TileGym's a
 # ================================================================ 11 asks
 s = new(prs)
 bg(s, INK)
-pill(s, M, Inches(0.44), "09  \u00b7  RISKS AND ASKS", fill=YELLOW, colour=INK)
+pill(s, M, Inches(0.44), "11  \u00b7  RISKS AND ASKS", fill=YELLOW, colour=INK)
 head(s, M, Inches(1.85), Inches(7.4),
      [[("Three answers", WHITE)], [("change the plan.", YELLOW)]], size=44)
 txt(s, M, Inches(4.05), Inches(6.6),
@@ -669,9 +715,9 @@ rect(s, 0, META_Y, W, H - META_Y, RGBColor(0x1C, 0x1C, 0x1C), "footer bar")
 txt(s, M, META_Y + Inches(0.15), Inches(9.4), Inches(0.24),
     "ARRIVES 07 NOV:  TWO KERNELS  \u00b7  THREE COMMANDS PER RERUN  \u00b7  ONE REPORT", size=10,
     colour=WHITE, font=MONO)
-txt(s, W - M - Inches(2.2), META_Y + Inches(0.15), Inches(2.2), Inches(0.24), "11 / 11", size=10,
+txt(s, W - M - Inches(2.2), META_Y + Inches(0.15), Inches(2.2), Inches(0.24), "12 / 12", size=10,
     colour=DARKGREY, font=MONO, align=PP_ALIGN.RIGHT)
-vnav(s, 11, TOTAL, dark=True)
+vnav(s, 12, TOTAL, dark=True)
 notes(s, "Three questions and what I assume if I hear nothing. The risks are handled, not hidden: "
          "clocks are logged, sizes are fixed now, and the kernel comes before the harness.")
 
