@@ -43,8 +43,9 @@ SAGE = RGBColor(0xBF, 0xD8, 0xCF)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 DARKGREY = RGBColor(0x9A, 0x96, 0x90)
 
-SANS = "Segoe UI"
-MONO = "Consolas"
+SERIF = "Cambria"      # display and giant statistics
+SANS = "Segoe UI"      # body copy
+MONO = "Consolas"      # labels, meta, code
 
 W, H = Inches(13.333), Inches(7.5)
 M = Inches(0.62)
@@ -121,7 +122,7 @@ def txt(slide, x, y, w, h=Inches(0.3), lines=None, size=14, bold=False, colour=I
     return box
 
 
-def head(slide, x, y, w, lines, size=40, line=1.04, colour=INK):
+def head(slide, x, y, w, lines, size=40, line=1.06, colour=INK, font=SERIF):
     """Display headline. `lines` is a list of paragraphs; each paragraph is a
     list of (text, colour) runs so one phrase can carry the accent."""
     box = slide.shapes.add_textbox(int(x), int(y), int(w), Inches(0.2))
@@ -138,7 +139,7 @@ def head(slide, x, y, w, lines, size=40, line=1.04, colour=INK):
             r.font.size = Pt(size)
             r.font.bold = True
             r.font.color.rgb = col if col else colour
-            r.font.name = SANS
+            r.font.name = font
     return box
 
 
@@ -155,6 +156,13 @@ def pill(slide, x, y, text, fill=INK, colour=WHITE, size=10.5, h=Inches(0.32),
 
 def chapter(slide, tag, fill=INK, colour=WHITE):
     pill(slide, M, Inches(0.44), tag, fill=fill, colour=colour)
+
+
+def eyebrow_dash(slide, text, colour=CORAL, size=11):
+    """The reference's other header: a short rule, then tracked mono caps."""
+    rule(slide, M, Inches(0.56), Inches(0.42), colour, Pt(2.5))
+    txt(slide, M + Inches(0.58), Inches(0.44), Inches(11.0), text, size=size, colour=colour,
+        font=MONO, caps=True)
 
 
 def vnav(slide, page, total, dark=False):
@@ -200,9 +208,9 @@ TOTAL = 12
 # ==================================================================== 1 title
 s = new(prs)
 bg(s)
-chapter(s, "CS-6023  \u00b7  PROJECT OP2  \u00b7  2026")
+eyebrow_dash(s, "CS-6023  \u00b7  PROJECT OP2  \u00b7  2026")
 head(s, M, Inches(1.85), Inches(8.6),
-     [[("Attention,", INK)], [("written ", INK), ("two ways.", CORAL)]], size=56)
+     [[("Attention,", INK)], [("written ", INK), ("two ways.", CORAL)]], size=50)
 rule(s, M, Inches(4.28), Inches(2.0), CORAL, Pt(3.0))
 txt(s, M, Inches(4.55), Inches(6.9),
     "One fused attention kernel, written twice: by hand in CUDA C++ and by tile in "
@@ -237,9 +245,10 @@ bg(s)
 chapter(s, "01  \u00b7  THE PROBLEM")
 head(s, M, Inches(1.0), Inches(9.4),
      [[("Attention is a ", INK), ("memory problem.", CORAL)],
-      [("The arithmetic was never the issue.", INK)]], size=34)
+      [("The arithmetic was never the issue.", INK)]], size=30)
 
-txt(s, M, Inches(2.72), Inches(3.4), "64\u00d7", size=104, bold=True, colour=CORAL, line=0.9)
+txt(s, M, Inches(2.72), Inches(3.4), "64\u00d7", size=100, bold=True, colour=CORAL,
+    line=0.9, font=SERIF)
 txt(s, M, Inches(4.38), Inches(3.3), "less traffic once the N\u00d7N matrix never reaches memory",
     size=12.5, colour=INK, line=1.3)
 txt(s, M, Inches(5.15), Inches(3.4),
@@ -280,7 +289,7 @@ s = new(prs)
 bg(s)
 chapter(s, "02  \u00b7  THE TRADE")
 head(s, M, Inches(1.0), Inches(10.0),
-     [[("Fusion buys traffic and ", INK), ("spends control.", CORAL)]], size=34)
+     [[("Fusion buys traffic and ", INK), ("spends control.", CORAL)]], size=30)
 
 pill(s, M, Inches(2.35), "BUYS", fill=BLUE)
 txt(s, M, Inches(2.82), Inches(5.4),
@@ -313,7 +322,7 @@ s = new(prs)
 bg(s)
 chapter(s, "03  \u00b7  SIX VARIANTS, EACH IN BOTH MODELS")
 head(s, M, Inches(0.98), Inches(11.0),
-     [[("One gets built. ", INK), ("Five decide why.", CORAL)]], size=32)
+     [[("One gets built. ", INK), ("Five decide why.", CORAL)]], size=29)
 
 cards = [
     ("01", "Vanilla SDPA", MINT, INK, "N\u00d7N on the bus, three launches",
@@ -437,7 +446,7 @@ s = new(prs)
 bg(s)
 chapter(s, "05  \u00b7  THE STACK")
 head(s, M, Inches(0.98), Inches(11.4),
-     [[("Two lanes, one ", INK), ("cubin", BLUE), (".", INK)]], size=32)
+     [[("Two lanes, one ", INK), ("cubin", BLUE), (".", INK)]], size=29)
 
 rows = [
     ("LANES", "attention.cu \u2192 nvcc \u2192 ptx \u2192 ptxas \u2192 cubin    |    "
@@ -475,7 +484,7 @@ s = new(prs)
 bg(s)
 chapter(s, "06  \u00b7  WHERE THIS STANDS")
 head(s, M, Inches(1.0), Inches(11.4),
-     [[("Built, running, ", INK), ("and next.", CORAL)]], size=34)
+     [[("Built, running, ", INK), ("and next.", CORAL)]], size=30)
 
 cols = [
     ("DONE", BLUE, WHITE, [
@@ -521,7 +530,7 @@ s = new(prs)
 bg(s)
 chapter(s, "07  \u00b7  THE MEASUREMENT")
 head(s, M, Inches(0.98), Inches(11.4),
-     [[("Four numbers, one protocol, ", INK), ("no stopwatch.", CORAL)]], size=32)
+     [[("Four numbers, one protocol, ", INK), ("no stopwatch.", CORAL)]], size=29)
 
 rows = [
     ("WARM-UP", "50 iterations before anything is timed. Compile time reported separately."),
@@ -551,7 +560,7 @@ s = new(prs)
 bg(s)
 chapter(s, "08  \u00b7  DEFINITION OF DONE")
 head(s, M, Inches(0.98), Inches(11.4),
-     [[("Six checks. ", INK), ("Every one can fail.", CORAL)]], size=32)
+     [[("Six checks. ", INK), ("Every one can fail.", CORAL)]], size=29)
 
 checks = [
     ("01", "Correct on every size", "max|out \u2212 ref_fp64| \u2264 5e-3 \u00b7 max|ref|"),
@@ -604,7 +613,7 @@ s = new(prs)
 bg(s)
 chapter(s, "09  \u00b7  THE PLAN")
 head(s, M, Inches(0.98), Inches(10.4),
-     [[("Seven days, five gates, ", INK), ("one cut list.", CORAL)]], size=32)
+     [[("Seven days, five gates, ", INK), ("one cut list.", CORAL)]], size=29)
 
 days = [("SAT 31", "gate green"), ("SUN 1", "bench.py"), ("MON 2", "cuTile kernel"),
         ("TUE 3", "CUDA kernel"), ("WED 4", "sweeps"), ("THU 5", "ncu profiles"),
@@ -651,7 +660,7 @@ s = new(prs)
 bg(s)
 chapter(s, "10  \u00b7  SOURCES")
 head(s, M, Inches(0.98), Inches(9.0),
-     [[("Where this ", INK), ("comes from.", CORAL)]], size=32)
+     [[("Where this ", INK), ("comes from.", CORAL)]], size=29)
 
 primary = [("cuTile Python documentation", "docs.nvidia.com/cuda/cutile-python"),
            ("NVIDIA/TileGym \u2014 attention and matmul kernels", "github.com/NVIDIA/TileGym"),
@@ -692,7 +701,7 @@ s = new(prs)
 bg(s, INK)
 pill(s, M, Inches(0.44), "11  \u00b7  RISKS AND ASKS", fill=YELLOW, colour=INK)
 head(s, M, Inches(1.85), Inches(7.4),
-     [[("Three answers", WHITE)], [("change the plan.", YELLOW)]], size=44)
+     [[("Three answers", WHITE)], [("change the plan.", YELLOW)]], size=38)
 txt(s, M, Inches(4.05), Inches(6.6),
     "Everything else I can absorb. These three decisions are not mine to make, and each one "
     "moves the schedule.", size=14, colour=DARKGREY, line=1.35)
