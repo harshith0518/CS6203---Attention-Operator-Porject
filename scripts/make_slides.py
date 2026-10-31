@@ -1,12 +1,22 @@
-"""Generate the 11-slide OP2 deck: engineering-notebook layout.
+"""Generate the OP2 deck in the "Silk Yellow Magazine" editorial style.
 
-Substance is unchanged from the reviewed version; this rewrites the packaging.
-No tables (everything with shape is drawn), no shadows, no rounded cards, one
-colour per concept, hairline rules instead of filled panels, and larger type.
+Devices taken from the reference template:
+  - warm grey paper, black type, one saturated accent per chapter
+  - a black capsule tag at top left that names the chapter
+  - rotated page navigation on the right edge
+  - oversized display headlines with one phrase in the accent colour
+  - a 3x2 numbered card grid (01..06) with flat colour blocks
+  - big-statistic slide with a hairline rule
+  - label-pill rows (NAME  value) as used for SCALE / TIME / SPEND / DWELL
+  - a black insight bar for the one sentence that must not be missed
+  - a horizontal dot timeline
+  - a dark closing slide carrying a pull-quote with a highlighted clause
+  - a black footer bar with mono metadata
+
+No fabricated data and no empty axes: every mark on every slide is either a
+measured, computed or labelled-as-assumed number.
 
     .\\.venv\\Scripts\\python.exe scripts\\make_slides.py
-
-Output: docs/op2-attention-slides.pptx
 """
 
 from pathlib import Path
@@ -15,31 +25,36 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
 # ------------------------------------------------------------------- palette
-PAPER = RGBColor(0xF8, 0xF7, 0xF3)
-INK = RGBColor(0x16, 0x18, 0x1D)
-GREY = RGBColor(0x5B, 0x61, 0x6B)
-HAIR = RGBColor(0xD9, 0xD6, 0xCE)
-CUDA = RGBColor(0xD5, 0x5E, 0x00)      # Okabe-Ito vermillion: hand-written CUDA
-TILE = RGBColor(0x00, 0x72, 0xB2)      # Okabe-Ito blue: cuTile
-PASS = RGBColor(0x00, 0x9E, 0x73)      # Okabe-Ito green: verified / pass
-DARK = RGBColor(0x0F, 0x14, 0x19)
-DARKTX = RGBColor(0xE8, 0xE6, 0xE1)
-CUDA_L = RGBColor(0xE6, 0x9F, 0x00)    # lighter on dark
-TILE_L = RGBColor(0x56, 0xB4, 0xE9)
-DARKGREY = RGBColor(0x9A, 0xA1, 0xAA)
+PAPER = RGBColor(0xED, 0xEB, 0xE6)     # warm grey page
+PAPER2 = RGBColor(0xE2, 0xDF, 0xD6)    # recessed block
+INK = RGBColor(0x11, 0x11, 0x11)
+MUTE = RGBColor(0x6B, 0x66, 0x60)
+CORAL = RGBColor(0xE8, 0x48, 0x2B)     # CUDA, and chapter 1 accent
+BLUE = RGBColor(0x2F, 0x6B, 0xE0)      # cuTile
+YELLOW = RGBColor(0xF5, 0xC4, 0x00)    # highlight / insight
+MINT = RGBColor(0xC9, 0xF0, 0xA8)
+PINK = RGBColor(0xF7, 0xB6, 0xAE)
+BLUEGRAY = RGBColor(0x93, 0xA9, 0xC4)
+SAGE = RGBColor(0xBF, 0xD8, 0xCF)
+WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+DARKGREY = RGBColor(0x9A, 0x96, 0x90)
 
 SANS = "Segoe UI"
 MONO = "Consolas"
 
 W, H = Inches(13.333), Inches(7.5)
-M = Inches(0.6)
+M = Inches(0.62)
 CW = W - 2 * M
+META_Y = Inches(6.98)
+BODY_BOTTOM = Inches(6.82)
 REPO = "github.com/harshith0518/CS6203---Attention-Operator-Porject"
 
 
+# ------------------------------------------------------------------ helpers
 def new(prs):
     return prs.slides.add_slide(prs.slide_layouts[6])
 
@@ -48,62 +63,51 @@ def alt(shape, text):
     shape._element._nvXxPr.cNvPr.set("descr", text)
 
 
-def bg(slide, colour):
-    rect(slide, 0, 0, W, H, colour, "page background")
+def _dim(v):
+    """A shape extent must be positive; computed heights can go negative."""
+    return max(int(abs(v)), 9144)
 
 
-def rect(slide, x, y, w, h, fill, alt_text=None):
-    s = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, int(x), int(y), int(w), int(h))
+def rect(slide, x, y, w, h, fill, alt_text=None, shape=MSO_SHAPE.RECTANGLE, adj=None):
+    s = slide.shapes.add_shape(shape, int(x), int(y), _dim(w), _dim(h))
     s.fill.solid()
     s.fill.fore_color.rgb = fill
     s.line.fill.background()
     s.shadow.inherit = False
+    if adj is not None:
+        try:
+            s.adjustments[0] = adj
+        except (IndexError, ValueError):
+            pass
     if alt_text:
         alt(s, alt_text)
     return s
 
 
-def hline(slide, x, y, w, colour=HAIR, thick=Pt(0.75)):
-    s = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, int(x), int(y), int(w), int(thick))
-    s.fill.solid()
-    s.fill.fore_color.rgb = colour
-    s.line.fill.background()
-    s.shadow.inherit = False
-    return s
+def bg(slide, colour=PAPER):
+    rect(slide, 0, 0, W, H, colour, "page background")
 
 
-def vline(slide, x, y, h, colour=HAIR, thick=Pt(0.75)):
-    s = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, int(x), int(y), int(thick), int(h))
-    s.fill.solid()
-    s.fill.fore_color.rgb = colour
-    s.line.fill.background()
-    s.shadow.inherit = False
-    return s
+def rule(slide, x, y, w, colour=INK, thick=Pt(1.0)):
+    rect(slide, x, y, w, thick, colour)
 
 
-def diamond(slide, cx, cy, size, colour):
-    s = slide.shapes.add_shape(MSO_SHAPE.DIAMOND, int(cx - size / 2), int(cy - size / 2),
-                               int(size), int(size))
-    s.fill.solid()
-    s.fill.fore_color.rgb = colour
-    s.line.fill.background()
-    s.shadow.inherit = False
-    return s
+def vrule(slide, x, y, h, colour=INK, thick=Pt(1.0)):
+    rect(slide, x, y, thick, h, colour)
 
 
-def txt(slide, x, y, w, h=Inches(0.32), lines=None, size=16, bold=False, colour=INK, font=SANS,
-        align=PP_ALIGN.LEFT, space=2, line=1.18, caps=False):
-    # callers may pass text where the height goes; accept either order
+def txt(slide, x, y, w, h=Inches(0.3), lines=None, size=14, bold=False, colour=INK, font=SANS,
+        align=PP_ALIGN.LEFT, space=2, line=1.2, caps=False):
+    # callers may pass the text where the height goes; accept either order
     if isinstance(h, (str, list)):
-        lines, h = h, Inches(0.32)
+        lines, h = h, Inches(0.3)
     if lines is None:
         lines = ""
     box = slide.shapes.add_textbox(int(x), int(y), int(w), int(h))
     tf = box.text_frame
     tf.word_wrap = True
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
-    items = lines if isinstance(lines, list) else [lines]
-    for i, s in enumerate(items):
+    for i, s in enumerate(lines if isinstance(lines, list) else [lines]):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.alignment = align
         p.space_after = Pt(space)
@@ -117,252 +121,265 @@ def txt(slide, x, y, w, h=Inches(0.32), lines=None, size=16, bold=False, colour=
     return box
 
 
-def label(slide, x, y, w, s, colour=GREY, size=11):
-    txt(slide, x, y, w, Inches(0.2), s, size=size, bold=True, colour=colour, caps=True)
+def head(slide, x, y, w, lines, size=40, line=1.04, colour=INK):
+    """Display headline. `lines` is a list of paragraphs; each paragraph is a
+    list of (text, colour) runs so one phrase can carry the accent."""
+    box = slide.shapes.add_textbox(int(x), int(y), int(w), Inches(0.2))
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+    for i, runs in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.line_spacing = line
+        p.space_after = Pt(0)
+        for text, col in runs:
+            r = p.add_run()
+            r.text = text
+            r.font.size = Pt(size)
+            r.font.bold = True
+            r.font.color.rgb = col if col else colour
+            r.font.name = SANS
+    return box
 
 
-def title(slide, s, colour=INK, size=36, y=Inches(0.62), w=None):
-    txt(slide, M, y, w or CW, Inches(1.05), s, size=size, bold=True, colour=colour, line=1.03)
+def pill(slide, x, y, text, fill=INK, colour=WHITE, size=10.5, h=Inches(0.32),
+         pad=Inches(0.2), font=MONO):
+    cw = Inches(size * 0.60 / 72.0)
+    w = pad * 2 + cw * len(text)
+    rect(slide, x, y, w, h, fill, "capsule tag: " + text,
+         shape=MSO_SHAPE.ROUNDED_RECTANGLE, adj=0.5)
+    txt(slide, x, y + (h - Inches(size * 1.35 / 72.0)) / 2 - Inches(0.01), w,
+        Inches(0.24), text, size=size, colour=colour, font=font, align=PP_ALIGN.CENTER)
+    return w
 
 
-def footer(slide, s, page, dark=False):
-    c = DARKGREY if dark else GREY
-    txt(slide, M, Inches(7.02), Inches(11.0), Inches(0.22), s, size=11, colour=c)
-    txt(slide, W - M - Inches(0.9), Inches(7.02), Inches(0.9), Inches(0.22), str(page),
-        size=11, colour=c, align=PP_ALIGN.RIGHT, font=MONO)
+def chapter(slide, tag, fill=INK, colour=WHITE):
+    pill(slide, M, Inches(0.44), tag, fill=fill, colour=colour)
+
+
+def vnav(slide, page, total, dark=False):
+    """Rotated page marker on the right edge, as in the reference template."""
+    box = slide.shapes.add_textbox(int(W - Inches(0.5)), int(Inches(0.5)),
+                                   int(Inches(0.3)), int(Inches(1.0)))
+    tf = box.text_frame
+    tf.word_wrap = False
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = f"{page:02d} / {total:02d}"
+    r.font.size = Pt(9)
+    r.font.name = MONO
+    r.font.color.rgb = DARKGREY if dark else MUTE
+    bodyPr = tf._txBody.find(qn("a:bodyPr"))
+    bodyPr.set("vert", "vert270")
+
+
+def metabar(slide, left, right):
+    rect(slide, 0, META_Y, W, H - META_Y, INK, "footer bar")
+    txt(slide, M, META_Y + Inches(0.15), Inches(9.0), Inches(0.24), left, size=10,
+        colour=WHITE, font=MONO)
+    txt(slide, W - M - Inches(2.2), META_Y + Inches(0.15), Inches(2.2), Inches(0.24), right,
+        size=10, colour=DARKGREY, font=MONO, align=PP_ALIGN.RIGHT)
+
+
+def insight(slide, x, y, w, h, label, body, size=15):
+    rect(slide, x, y, w, h, INK, "insight bar")
+    pill(slide, x + Inches(0.22), y + Inches(0.14), label, fill=YELLOW, colour=INK, size=9.5)
+    body_h = max(h - Inches(0.62), Inches(0.22))
+    txt(slide, x + Inches(0.22), y + Inches(0.56), w - Inches(0.44), body_h,
+        body, size=size, colour=WHITE, line=1.25)
 
 
 def notes(slide, s):
     slide.notes_slide.notes_text_frame.text = s
 
 
-def grid(slide, x, y, rows, cols, cell, gap, cells, alt_text=None):
-    """Draw a small square grid; `cells` is a set of (r, c) -> colour."""
-    for r in range(rows):
-        for c in range(cols):
-            col = cells.get((r, c))
-            if col is None:
-                continue
-            rect(slide, x + c * (cell + gap), y + r * (cell + gap), cell, cell, col)
-
-
-MASKS = {
-    "full": lambda r, c: True,
-    "causal": lambda r, c: c <= r,
-    "band": lambda r, c: abs(r - c) <= 1,
-    "grouped": lambda r, c: True,
-    "cross": lambda r, c: c < 3,
-    "slices": lambda r, c: (r + c) % 2 == 0,
-}
-
-
-def mask_pictogram(slide, x, y, kind, colour, cell=Inches(0.115), gap=Inches(0.028), n=5):
-    test = MASKS[kind]
-    for r in range(n):
-        for c in range(n):
-            if test(r, c):
-                col = colour
-                if kind == "grouped" and c >= 2:
-                    col = TILE
-                rect(slide, x + c * (cell + gap), y + r * (cell + gap), cell, cell, col)
-
-
 prs = Presentation()
 prs.slide_width, prs.slide_height = W, H
+TOTAL = 11
 
 # ==================================================================== 1 title
 s = new(prs)
-bg(s, DARK)
-# two mirrored 8x8 matrices: the same problem, two ways of writing it
-for gi, (gx, col) in enumerate([(Inches(8.45), CUDA_L), (Inches(11.05), TILE_L)]):
-    for r in range(8):
-        for c in range(8):
-            shade = r * 8 + c
-            rect(s, gx + c * Inches(0.31), Inches(2.1) + r * Inches(0.31),
-                 Inches(0.26), Inches(0.26), col)
-label(s, M, Inches(0.55), Inches(8.0), "CS-6023  \u00b7  GPU kernel programming  \u00b7  project OP2",
-      colour=DARKGREY, size=12)
-txt(s, M, Inches(1.5), Inches(7.7), Inches(1.9), "Attention,\nwritten two ways",
-    size=56, bold=True, colour=DARKTX, line=1.0)
-hline(s, M, Inches(4.05), Inches(5.4), colour=CUDA_L)
-txt(s, M, Inches(4.25), Inches(6.6), Inches(0.9),
-    "Memory, not arithmetic, is what limits attention.", size=22, colour=CUDA_L, line=1.2)
-txt(s, M, Inches(4.95), Inches(6.4), Inches(0.8),
-    "One fused kernel in CUDA C++ and in cuTile, measured against each other.",
-    size=16, colour=DARKTX, line=1.25)
-txt(s, M, Inches(5.95), Inches(9.0), Inches(0.9),
-    ["surya harshith  \u00b7  cs23b010", "for pravin jagtap and sumanta datta  \u00b7  31 oct 2026"],
-    size=12, colour=DARKGREY, font=MONO, line=1.5)
-notes(s, "Seven days to the deadline. This deck is the whole picture: the operator, why it is a "
-         "memory problem, which variant I build, what I build it with, how I will know it is right, "
-         "and what could stop me.")
+bg(s)
+chapter(s, "CS-6023  \u00b7  PROJECT OP2  \u00b7  2026")
+head(s, M, Inches(1.85), Inches(8.6),
+     [[("Attention,", INK)], [("written ", INK), ("two ways.", CORAL)]], size=56)
+rule(s, M, Inches(4.28), Inches(2.0), CORAL, Pt(3.0))
+txt(s, M, Inches(4.55), Inches(6.9),
+    "One fused attention kernel, written twice: by hand in CUDA C++ and by tile in "
+    "cuTile. Same maths, different owner of the machine.", size=15, colour=MUTE, line=1.35)
+txt(s, M, Inches(5.55), Inches(8.6),
+    ["SURYA HARSHITH  \u00b7  CS23B010",
+     "FOR PRAVIN JAGTAP AND SUMANTA DATTA  \u00b7  31 OCT 2026"], size=10.5, colour=INK,
+    font=MONO, line=1.45)
+# two tall swatches stand in for the photographic half of the reference layout
+for i, (col, label) in enumerate([(CORAL, "CUDA C++"), (BLUE, "cuTile")]):
+    x = Inches(9.5) + i * Inches(1.5)
+    rect(s, x, Inches(1.35), Inches(1.32), Inches(4.85), col, label + " swatch")
+    box = s.shapes.add_textbox(int(x + Inches(0.5)), int(Inches(1.6)),
+                               int(Inches(0.32)), int(Inches(1.6)))
+    tf = box.text_frame
+    tf.word_wrap = False
+    r = tf.paragraphs[0].add_run()
+    r.text = label.upper()
+    r.font.size = Pt(10)
+    r.font.name = MONO
+    r.font.color.rgb = WHITE
+    tf._txBody.find(qn("a:bodyPr")).set("vert", "vert270")
+metabar(s, "CS-6023 GPU KERNEL PROGRAMMING  \u00b7  IIT MADRAS", "01 / 11")
+vnav(s, 1, TOTAL)
+notes(s, "Seven days to the deadline. The deck is the whole picture: the operator, why it is a "
+         "memory problem, which variant I build, what I build it with, how I will know it is "
+         "right, and what could stop me.")
 
-# ================================================================== 2 traffic
+# ================================================================= 2 problem
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "the problem")
-title(s, "Attention moves an N\u00d7N matrix, and that is the cost.", size=34)
-label(s, M, Inches(1.62), Inches(6.0), "unfused: four passes over the matrix", colour=CUDA)
-passes = ["write S", "read S", "write P", "read P"]
-for i, name in enumerate(passes):
-    y = Inches(1.92) + i * Inches(0.44)
-    rect(s, M, y, Inches(3.3), Inches(0.34), CUDA)
-    txt(s, M + Inches(3.42), y + Inches(0.04), Inches(1.6), name, size=12, colour=GREY, font=MONO)
-txt(s, M, Inches(3.72), Inches(4.2), Inches(0.5), "4 \u00d7 268 MB  =  1.07 GB", size=18,
-    bold=True, colour=CUDA, font=MONO)
-label(s, M, Inches(4.35), Inches(6.0), "fused: the matrix never leaves the chip", colour=TILE)
-rect(s, M, Inches(4.63), Inches(0.33), Inches(0.33), TILE)
-txt(s, M + Inches(0.46), Inches(4.67), Inches(3.6), "17 MB  =  Q, K, V, O only", size=14,
-    bold=True, colour=TILE, font=MONO)
-txt(s, M, Inches(5.05), Inches(4.6), Inches(0.3),
-    "drawn to scale, not to shape", size=11, colour=GREY)
+bg(s)
+chapter(s, "01  \u00b7  THE PROBLEM")
+head(s, M, Inches(1.0), Inches(9.4),
+     [[("Attention is a ", INK), ("memory problem.", CORAL)],
+      [("The arithmetic was never the issue.", INK)]], size=34)
 
-# hero number
-txt(s, Inches(4.55), Inches(4.55), Inches(3.2), Inches(1.4), "64\u00d7", size=96, bold=True,
-    colour=TILE, line=0.9)
-txt(s, Inches(4.55), Inches(5.95), Inches(3.4), Inches(1.0),
-    ["less traffic,", "but at most ~3\u00d7 less time:", "compute becomes the limit."],
-    size=12, colour=GREY, line=1.25)
+txt(s, M, Inches(2.72), Inches(3.4), "64\u00d7", size=104, bold=True, colour=CORAL, line=0.9)
+txt(s, M, Inches(4.38), Inches(3.3), "less traffic once the N\u00d7N matrix never reaches memory",
+    size=12.5, colour=INK, line=1.3)
+txt(s, M, Inches(5.15), Inches(3.4),
+    ["computed  \u00b7  N=4096, 8 heads, D=64, fp16"], size=10, colour=MUTE, font=MONO)
 
-# mini roofline: memory-bound diagonal, compute ceiling, ridge where they meet
-rx, ry, rw, rh = Inches(7.9), Inches(2.15), Inches(4.7), Inches(3.2)
-L, R, T, B = rx, rx + rw, ry, ry + rh
-ridge_frac, ceil_frac = 0.42, 0.34
-ridge_x = L + rw * ridge_frac
-ceil_y = T + rh * ceil_frac
-vline(s, L, T, rh, colour=INK, thick=Pt(1.0))
-hline(s, L, B, rw, colour=INK, thick=Pt(1.0))
-# memory-bound slope
-diag = s.shapes.add_connector(1, int(L), int(B), int(ridge_x), int(ceil_y))
-diag.line.color.rgb = CUDA
-diag.line.width = Pt(2.0)
-# compute ceiling
-hline(s, ridge_x, ceil_y, rw * (1 - ridge_frac), colour=TILE, thick=Pt(2.0))
-vline(s, ridge_x, ceil_y, rh * (1 - ceil_frac), colour=GREY, thick=Pt(0.75))
-txt(s, L - Inches(0.05), T - Inches(0.3), Inches(2.4), "FLOP/s", size=10, colour=GREY, font=MONO)
-txt(s, R - Inches(1.5), B + Inches(0.08), Inches(1.5), "bytes/s", size=10, colour=GREY,
-    font=MONO, align=PP_ALIGN.RIGHT)
-txt(s, ridge_x - Inches(0.9), ceil_y - Inches(0.28), Inches(1.3), "ridge 104", size=10,
-    colour=INK, font=MONO, align=PP_ALIGN.RIGHT)
-txt(s, ridge_x + Inches(0.16), ceil_y - Inches(0.26), Inches(1.9), "compute-bound", size=10,
-    colour=TILE, font=MONO)
-txt(s, L + Inches(0.12), B - Inches(0.42), Inches(1.8), "memory-bound", size=10, colour=CUDA,
-    font=MONO)
-# the two kernels sit on the memory-bound slope at their own arithmetic intensity
-for frac, lab, col in [(0.11, "32", CUDA), (0.36, "2,048", TILE)]:
-    px = L + rw * frac
-    py_ = B - (px - L) / (ridge_x - L) * (B - ceil_y)
-    rect(s, px - Inches(0.05), py_ - Inches(0.05), Inches(0.1), Inches(0.1), col)
-    txt(s, px - Inches(0.85), py_ + Inches(0.04), Inches(1.0), lab, size=11, bold=True,
-        colour=col, font=MONO, align=PP_ALIGN.RIGHT)
-txt(s, L + rw * 0.16, B + Inches(0.3), Inches(3.2), "arithmetic intensity, log scale", size=10,
-    colour=GREY)
-footer(s, "computed: N=4096, 8 heads, D=64, fp16. Ridge assumes a 20 TFLOP/s tensor peak, which I "
-          "measure first and then recompute.", 2)
+bx = Inches(4.55)
+txt(s, bx, Inches(2.62), Inches(5.0), "UNFUSED  \u00b7  FOUR PASSES OVER 268 MB", size=10, bold=True,
+    colour=MUTE, font=MONO)
+for i, name in enumerate(["write S", "read S", "write P", "read P"]):
+    y = Inches(2.92) + i * Inches(0.4)
+    rect(s, bx, y, Inches(3.1), Inches(0.28), CORAL, "traffic block: " + name)
+    txt(s, bx + Inches(3.22), y - Inches(0.01), Inches(1.6), name, size=10.5, colour=MUTE, font=MONO)
+txt(s, bx, Inches(4.62), Inches(5.2), "1.07 GB", size=22, bold=True, colour=INK, font=MONO)
+txt(s, bx + Inches(1.55), Inches(4.68), Inches(3.6), "in, and back out, four times", size=11.5,
+    colour=MUTE)
+
+txt(s, bx, Inches(5.35), Inches(5.0), "FUSED  \u00b7  17 MB", size=10, bold=True, colour=MUTE, font=MONO)
+rect(s, bx, Inches(5.63), Inches(0.28), Inches(0.28), BLUE, "fused traffic block")
+txt(s, bx + Inches(0.42), Inches(5.66), Inches(4.6), "Q, K, V, O  \u2014  the matrix stays on chip",
+    size=11.5, colour=INK, font=MONO)
+
+insight(s, Inches(9.55), Inches(2.62), Inches(3.16), Inches(3.05), "THE CATCH",
+        ["At most about 3\u00d7 faster, not 64\u00d7. Once memory stops being the limit, "
+         "compute is."], size=13)
+txt(s, Inches(9.77), Inches(4.72), Inches(2.72),
+    "Measured next: DRAM bytes at N = 2048, fused against unfused.", size=10.5,
+    colour=DARKGREY, font=MONO, line=1.3)
+txt(s, Inches(9.55), Inches(5.8), Inches(3.2),
+    "Ridge assumes 20 TFLOP/s, which I measure before quoting.", size=10, colour=MUTE, line=1.25)
+metabar(s, "THE BILL IS THE MATRIX, NOT THE MULTIPLY", "02 / 11")
+vnav(s, 2, TOTAL)
 notes(s, "Four passes over a 268 MB matrix is the 1.07 GB. The fused kernel never writes it. Do not "
-         "read 64 times as a speedup: both time figures are roofline bounds and I will measure the "
-         "real ones.")
+         "read 64 times as a speedup: both time figures are roofline bounds and I measure the real "
+         "ones.")
 
-# ============================================================== 3 buys/costs
+# =================================================================== 3 trade
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "the trade")
-title(s, "Fusion buys traffic and spends control.", size=34)
-vline(s, W / 2, Inches(1.75), Inches(2.65), colour=HAIR)
-label(s, M, Inches(1.75), Inches(5.0), "buys", colour=TILE)
-txt(s, M, Inches(2.05), Inches(5.3), Inches(2.4),
+bg(s)
+chapter(s, "01  \u00b7  THE TRADE")
+head(s, M, Inches(1.0), Inches(10.0),
+     [[("Fusion buys traffic and ", INK), ("spends control.", CORAL)]], size=34)
+
+pill(s, M, Inches(2.35), "BUYS", fill=BLUE)
+txt(s, M, Inches(2.82), Inches(5.4),
     ["One kernel instead of three launches.",
-     "No 268 MB tensor ever reaches device memory.",
-     "A softmax that fits in registers, not in HBM."],
-    size=17, colour=INK, line=1.3, space=10)
-label(s, W / 2 + Inches(0.45), Inches(1.75), Inches(5.0), "costs", colour=CUDA)
-txt(s, W / 2 + Inches(0.45), Inches(2.05), Inches(5.3), Inches(2.4),
-    ["Shared memory and register pressure become yours to manage.",
-     "The softmax is only ever visible one slice at a time.",
-     "A tail that is not masked is a silent error, not a crash."],
-    size=17, colour=INK, line=1.3, space=10)
-hline(s, M, Inches(4.55), CW, colour=INK, thick=Pt(1.0))
-label(s, M, Inches(4.72), Inches(6.0), "the goal", colour=INK)
-txt(s, M, Inches(5.02), Inches(11.6), Inches(1.1),
-    "Build the same fused operator twice, hand-written and tile-level, and measure which "
-    "abstraction is worth the control it asks you to give up.", size=24, colour=INK, line=1.25)
-txt(s, M, Inches(6.05), Inches(11.6), Inches(0.6),
-    "Same mathematics, same sizes, same timing protocol, same reference. One novelty is not the "
-    "goal; a fair comparison is.", size=14, colour=GREY, line=1.2)
-footer(s, "The tile model takes the second cost off your hands. Whether that is worth it is the "
-          "question the deck ends on.", 3)
-notes(s, "This is the trade in one line. Fusion is what makes attention fast, and the price is "
-         "control over memory. The two models divide that price differently, which is the whole "
-         "project.")
+     "No 268 MB tensor in device memory.",
+     "A softmax that lives in registers."], size=15, colour=INK, line=1.35, space=9)
+
+pill(s, Inches(6.85), Inches(2.35), "COSTS", fill=CORAL)
+txt(s, Inches(6.85), Inches(2.82), Inches(5.6),
+    ["Shared memory and registers are yours to manage.",
+     "The row maximum only exists one slice at a time.",
+     "An unmasked tail is a silent error, not a crash."], size=15, colour=INK, line=1.35, space=9)
+
+rule(s, M, Inches(4.95), CW, INK, Pt(1.0))
+txt(s, M, Inches(5.1), Inches(1.6), "THE GOAL", size=10, bold=True, colour=MUTE, font=MONO)
+head(s, M, Inches(5.38), Inches(11.9),
+     [[("Build it twice, then judge which abstraction ", INK),
+       ("earns its keep.", CORAL)]], size=25, line=1.15)
+txt(s, M, Inches(6.08), Inches(11.9),
+    "Same mathematics, same sizes, same protocol, same reference. A fair comparison is the "
+    "deliverable, not a novelty.", size=12, colour=MUTE)
+metabar(s, "THE TILE MODEL TAKES THE SECOND COST OFF YOUR HANDS \u2014 WHETHER THAT PAYS IS THE QUESTION",
+        "03 / 11")
+vnav(s, 3, TOTAL)
+notes(s, "This is the trade in one line. Fusion is what makes attention fast and the price is "
+         "control over memory. The two models divide that price differently, which is the project.")
 
 # ================================================================ 4 variants
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "the operator  \u00b7  six common variants, one gets built")
-title(s, "One variant gets built. The other five decide why.", size=32)
-txt(s, M, Inches(1.5), Inches(11.9), Inches(0.3),
-    "O = softmax( Q K\u1d40 / \u221ad + mask ) \u00b7 V    self-attention, forward only, exact, "
-    "causal as a flag", size=12, colour=GREY, font=MONO)
+bg(s)
+chapter(s, "02  \u00b7  SIX VARIANTS, EACH IN BOTH MODELS")
+head(s, M, Inches(0.98), Inches(11.0),
+     [[("One gets built. ", INK), ("Five decide why.", CORAL)]], size=32)
 
 cards = [
-    ("full", "Vanilla SDPA", "3 launches", "no help", False),
-    ("causal", "Causal", "loop bound + if", "loop bound + where", False),
-    ("slices", "Fused, online softmax", "rescale by hand", "one tile multiply", True),
-    ("grouped", "GQA / MQA", "index maths", "stacked tile dim", False),
-    ("band", "Sliding window", "two bounds", "two bounds", False),
-    ("cross", "Cross-attention", "one row per block", "wastes 63/64", False),
+    ("01", "Vanilla SDPA", MINT, INK, "N\u00d7N on the bus, three launches",
+     "cuda 3 kernels \u00b7 cutile no help"),
+    ("02", "Causal", PINK, INK, "skip future tiles, mask the diagonal",
+     "cuda bound + if \u00b7 cutile where"),
+    ("03", "Fused, online softmax", INK, WHITE, "softmax seen one slice at a time",
+     "rescale by hand \u00b7 one multiply"),
+    ("04", "GQA / MQA", BLUEGRAY, INK, "query heads share one K/V head",
+     "cuda index maths \u00b7 cutile stacked dim"),
+    ("05", "Sliding window", SAGE, INK, "band-shaped loop bounds",
+     "cuda two bounds \u00b7 cutile two bounds"),
+    ("06", "Cross-attention", YELLOW, INK, "Nq \u2260 Nkv, so two tilings",
+     "cuda one row/block \u00b7 64-row tile wastes 63/64"),
 ]
-for i, (kind, name, c_cuda, c_tile, hero) in enumerate(cards):
-    col_i, row_i = i % 3, i // 3
-    x = M + col_i * Inches(4.05)
-    y = Inches(1.95) + row_i * Inches(2.45)
-    if hero:
-        mask_pictogram(s, x + Inches(0.05), y + Inches(0.1), kind, TILE)
-        rect(s, x + Inches(1.05), y + Inches(0.06), Inches(0.86), Inches(0.26), TILE)
-        txt(s, x + Inches(1.05), y + Inches(0.1), Inches(0.86), "build", size=10, bold=True,
-            colour=PAPER, font=MONO, align=PP_ALIGN.CENTER)
-        hline(s, x, y + Inches(0.86), Inches(3.6), colour=TILE, thick=Pt(1.5))
-    else:
-        mask_pictogram(s, x, y + Inches(0.16), kind, GREY)
-    txt(s, x, y + Inches(0.92), Inches(3.6), name, size=17, bold=hero, colour=INK if hero else GREY)
-    txt(s, x, y + Inches(1.22), Inches(3.6), "CUDA  " + c_cuda, size=12,
-        colour=CUDA if hero else GREY, font=MONO)
-    txt(s, x, y + Inches(1.46), Inches(3.6), "cuTile " + c_tile, size=12,
-        colour=TILE if hero else GREY, font=MONO)
-txt(s, M, Inches(6.55), Inches(11.9), Inches(0.4),
-    "Rows 1 and 2 are the baseline and the flag. Rows 4 to 6 are read and reported, not built.",
-    size=12, colour=GREY)
-footer(s, "Why #3: it is the only variant where both models face the same hard problem, a softmax "
-          "seen one slice at a time.", 4)
+cw, ch, gap = Inches(3.86), Inches(1.92), Inches(0.27)
+for i, (num, name, fill, fg, problem, cost) in enumerate(cards):
+    col, row = i % 3, i // 3
+    x = M + col * (cw + gap)
+    y = Inches(1.95) + row * (ch + Inches(0.24))
+    rect(s, x, y, cw, ch, fill, "variant card: " + name)
+    txt(s, x + Inches(0.22), y + Inches(0.14), Inches(0.9), num, size=22, bold=True,
+        colour=fg, font=MONO)
+    txt(s, x + Inches(0.22), y + Inches(0.62), cw - Inches(0.4), name, size=15, bold=True,
+        colour=fg)
+    txt(s, x + Inches(0.22), y + Inches(0.94), cw - Inches(0.4), problem, size=11.5,
+        colour=fg if fill is INK else MUTE, line=1.2)
+    txt(s, x + Inches(0.22), y + ch - Inches(0.42), cw - Inches(0.4), cost, size=9.5,
+        colour=fg if fill is INK else MUTE, font=MONO)
+
+hero_x = M + 2 * (cw + gap)
+pill(s, hero_x + cw - Inches(1.02), Inches(1.95) + Inches(0.18), "BUILD", fill=YELLOW,
+     colour=INK, size=9.5, h=Inches(0.26), pad=Inches(0.14))
+txt(s, M, Inches(6.42), Inches(9.5),
+    "Only 03 runs end to end. Causal is a flag on it; 04 to 06 are read and reported.",
+    size=11.5, colour=MUTE)
+metabar(s, "CUDA AND CUTILE COSTS ARE MY READING OF THE DOCS, NOT MEASUREMENTS", "04 / 11")
+vnav(s, 4, TOTAL)
 notes(s, "These are the six I would call common, and what each costs in each model. I build row "
-         "three only. The CUDA and cuTile costs are my reading of the docs, not measurements.")
+         "three only, with causal as a flag. The middle columns are reading, not measurement.")
 
 # ==================================================================== 5 code
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "the kernel")
-title(s, "The rescale: 32 registers, or one multiply.", size=34)
+bg(s)
+chapter(s, "03  \u00b7  THE KERNEL")
+head(s, M, Inches(0.98), Inches(11.4),
+     [[("The rescale is ", INK), ("32 registers", CORAL), (", or ", INK), ("one multiply.", BLUE)]],
+     size=32)
 
-cuda_lines = [
-    "// each thread owns 2 rows of the warp's 16-row tile",
+cuda = [
     "float m[2]={-1e30f,-1e30f}, l[2]={0,0};",
-    "float acc[D/8][4] = {};      // 32 fp32",
+    "float acc[D/8][4] = {};       // 32 fp32",
     "for (int k = 0; k < nk; ++k) {",
     "  load_kv(k); __syncthreads();",
-    "  mma_qk(s, q_frag, k);      // S = Q K^T",
+    "  mma_qk(s, q_frag, k);       // S = Q K^T",
     "  for (int r = 0; r < 2; ++r) {",
     "    float x = rowmax(s, r) * scale;",
     "    x = fmaxf(x, __shfl_xor_sync(~0u,x,1));",
     "    x = fmaxf(x, __shfl_xor_sync(~0u,x,2));",
     "    float mn = fmaxf(m[r], x);",
-    "    float a  = exp2f(m[r] - mn);   // rescale",
+    "    float a  = exp2f(m[r] - mn);  // rescale",
     "    l[r] *= a; m[r] = mn;",
     "    for (int n=0;n<D/8;++n) acc[n][2*r]*=a;",
     "  }",
-    "}",
 ]
-tile_lines = [
-    "bh, qi = ct.bid(1), ct.bid(0)",
+tile = [
     "q = ct.load(Q, (bh, qi, 0), (1, BQ, D))",
     "m = full(-1e30); l = zeros; acc = zeros",
     "for k in range(num_kv_tiles):",
@@ -371,25 +388,20 @@ tile_lines = [
     "    s = ct.where(keep(qi, k), s, -1e30)",
     "    m_new = ct.maximum(m, ct.max(s, axis=2))",
     "    p = ct.exp2(s - ct.expand_dims(m_new, 2))",
-    "    a = ct.exp2(m - m_new)    # rescale",
+    "    a = ct.exp2(m - m_new)      # rescale",
     "    l = l * a + ct.sum(p, axis=2)",
     "    acc = ct.mma(p.astype(f16), load_v(k),",
     "                 acc * ct.expand_dims(a, 2))",
-    "    m = m_new",
-    "ct.store(O, (bh, qi, 0), acc / ct.expand_dims(l, 2))",
 ]
-LH = Inches(0.225)
 
 
-def code_panel(slide, x, y, w, h, name, lines, colour, band_rows):
-    vline(slide, x, y, h, colour=colour, thick=Pt(3.0))
-    txt(slide, x + Inches(0.16), y - Inches(0.02), Inches(3.0), name, size=13, bold=True, colour=colour)
-    text_top = y + Inches(0.34)
-    for r0, r1 in band_rows:
-        rect(slide, x + Inches(0.1), text_top + LH * r0 - Inches(0.02),
-             w - Inches(0.2), LH * (r1 - r0 + 1) + Inches(0.02), RGBColor(0xEC, 0xE9, 0xE1))
-    box = slide.shapes.add_textbox(int(x + Inches(0.14)), int(text_top),
-                                   int(w - Inches(0.2)), int(h - Inches(0.4)))
+def codecol(slide, x, y, w, label, lines, colour, band):
+    pill(slide, x, y, label, fill=colour)
+    top = y + Inches(0.46)
+    for r0, r1 in band:
+        rect(slide, x - Inches(0.08), top + Inches(0.205) * r0 - Inches(0.03),
+             w + Inches(0.16), Inches(0.205) * (r1 - r0 + 1) + Inches(0.02), PAPER2)
+    box = slide.shapes.add_textbox(int(x), int(top), int(w), int(Inches(3.2)))
     tf = box.text_frame
     tf.word_wrap = False
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
@@ -399,327 +411,273 @@ def code_panel(slide, x, y, w, h, name, lines, colour, band_rows):
         p.line_spacing = 1.0
         r = p.add_run()
         r.text = ln
-        r.font.size = Pt(13)
+        r.font.size = Pt(11.5)
         r.font.name = MONO
-        r.font.color.rgb = GREY if ln.strip().startswith(("#", "//")) else INK
+        r.font.color.rgb = MUTE if ln.strip().startswith(("#", "//")) else INK
 
 
-code_panel(s, M, Inches(1.66), Inches(5.85), Inches(3.95), "cuda c++  \u00b7  sketch", cuda_lines,
-           CUDA, [(11, 13)])
-code_panel(s, Inches(6.85), Inches(1.66), Inches(5.85), Inches(3.95), "cutile  \u00b7  sketch",
-           tile_lines, TILE, [(9, 12)])
+codecol(s, M, Inches(1.72), Inches(5.35), "CUDA C++", cuda, CORAL, [(10, 12)])
+codecol(s, Inches(7.0), Inches(1.72), Inches(5.75), "CUTILE", tile, BLUE, [(8, 10)])
 
-txt(s, M, Inches(5.72), Inches(5.6), Inches(0.3), "32 registers, rescaled by hand", size=14,
-    bold=True, colour=CUDA)
-txt(s, Inches(6.85), Inches(5.72), Inches(5.6), Inches(0.3), "one tile multiply", size=14,
-    bold=True, colour=TILE)
-hline(s, M, Inches(6.12), CW, colour=HAIR)
-txt(s, M, Inches(6.22), Inches(11.9), Inches(0.34),
+rule(s, M, Inches(5.28), CW, INK, Pt(1.0))
+txt(s, M, Inches(5.42), Inches(5.3), "32 registers, rescaled by hand", size=14, bold=True, colour=CORAL)
+txt(s, Inches(7.0), Inches(5.42), Inches(5.3), "one multiply on the accumulator", size=14, bold=True,
+    colour=BLUE)
+txt(s, M, Inches(5.82), Inches(11.8),
     "Both scale before the max, mask the tail, and rescale before accumulating. That order is what "
-    "keeps the denominator from underflowing.", size=12, colour=GREY)
-footer(s, "Sketches, not compiled. cuTile API details are unverified until the kernel runs.", 5)
-notes(s, "Left is what I write per thread, right is what I write per tile. The rescale is 32 "
-         "registers by hand on the left and one multiply on the right. Whether that one line costs "
-         "speed is what the profiler will tell me.")
+    "stops the denominator underflowing.", size=12, colour=MUTE, line=1.25)
+metabar(s, "SKETCHES, NOT COMPILED \u00b7 CUTILE API DETAILS UNVERIFIED UNTIL IT RUNS", "05 / 11")
+vnav(s, 5, TOTAL)
+notes(s, "Left is per thread, right is per tile. The rescale is 32 registers by hand on the left and "
+         "one multiply on the right. Whether that one line costs speed is what the profiler tells "
+         "me.")
 
 # =================================================================== 6 stack
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "the stack  \u00b7  installed and verified here")
-title(s, "Two lanes to the same cubin.", size=34)
+bg(s)
+chapter(s, "04  \u00b7  THE STACK")
+head(s, M, Inches(0.98), Inches(11.4),
+     [[("Two lanes, one ", INK), ("cubin", BLUE), (".", INK)]], size=32)
 
-lane_y = [Inches(1.68), Inches(2.5)]
-lanes = [("cuda c++", CUDA, ["attention.cu", "nvcc", "ptx", "ptxas", "cubin"]),
-         ("cutile", TILE, ["attention.py", "cuda.tile", "tileir", "tileiras", "cubin"])]
-for li, (name, col, steps) in enumerate(lanes):
-    y = lane_y[li]
-    label(s, M, y + Inches(0.1), Inches(1.25), name, colour=col, size=11)
-    x = M + Inches(1.3)
-    bw = Inches(1.55)
-    for si, st in enumerate(steps):
-        vline(s, x, y, Inches(0.44), colour=col, thick=Pt(2.0))
-        txt(s, x + Inches(0.12), y + Inches(0.11), bw - Inches(0.15), st, size=12,
-            colour=INK, font=MONO)
-        if si < len(steps) - 1:
-            txt(s, x + bw - Inches(0.04), y + Inches(0.08), Inches(0.26), "\u2192", size=13,
-                colour=GREY)
-        x += bw + Inches(0.24)
-    txt(s, x + Inches(0.06), y + Inches(0.11), Inches(1.6), "GPU sm_86", size=12, bold=True,
-        colour=INK, font=MONO)
+rows = [
+    ("LANES", "attention.cu \u2192 nvcc \u2192 ptx \u2192 ptxas \u2192 cubin    |    "
+              "attention.py \u2192 cuda.tile \u2192 tileir \u2192 tileiras \u2192 cubin"),
+    ("HARDWARE", "RTX 3050 laptop  \u00b7  4 GB GDDR6  \u00b7  ~192 GB/s  \u00b7  sm_86, Ampere"),
+    ("INSTALLED", "cuda-tile 1.7.0  \u00b7  tileiras, nvvm, nvrtc, nvcc 13.4.92  \u00b7  "
+                  "cupy 14.2.0  \u00b7  numpy 2.5.4"),
+    ("INERT", "TMA, thread-block clusters, FP8  \u2014  all need sm_90 or newer, in both models"),
+    ("MISSING", "ncu and compute-sanitizer  \u2014  needed only for the CUDA half and profiling"),
+]
+for i, (label, body) in enumerate(rows):
+    y = Inches(1.95) + i * Inches(0.82)
+    pill(s, M, y + Inches(0.06), label, fill=INK if i < 3 else CORAL, size=9.5)
+    txt(s, M + Inches(1.62), y, Inches(10.4),
+        body, size=13 if i == 0 else 14, colour=INK if i < 3 else MUTE,
+        font=MONO if i in (0, 2) else SANS, line=1.3)
+    if i < len(rows) - 1:
+        rule(s, M, y + Inches(0.62), CW, PAPER2, Pt(1.0))
 
-label(s, M, Inches(3.35), Inches(6.0), "hardware, as measured not quoted")
-specs = [("RTX 3050", "laptop GPU"), ("4 GB", "GDDR6, ~3.8 free"),
-         ("~192 GB/s", "measured next"), ("sm_86", "Ampere, CC 8.6")]
-for i, (big, small) in enumerate(specs):
-    x = M + i * Inches(3.0)
-    txt(s, x, Inches(3.6), Inches(2.8), big, size=26, bold=True, colour=INK, font=MONO)
-    txt(s, x, Inches(3.98), Inches(2.8), small, size=11, colour=GREY)
-
-label(s, M, Inches(4.62), Inches(4.6), "inert on this gpu, in both models")
-txt(s, M + Inches(4.75), Inches(4.62), Inches(0.9), "cuda", size=10, colour=GREY, font=MONO)
-txt(s, M + Inches(5.5), Inches(4.62), Inches(0.9), "cutile", size=10, colour=GREY, font=MONO)
-inert = [("tma", "sm_90 and later"), ("thread-block clusters", "sm_90 and later"),
-         ("fp8 / block-scaled mma", "Ada and later")]
-for i, (feat, since) in enumerate(inert):
-    y = Inches(4.9) + i * Inches(0.28)
-    txt(s, M, y, Inches(2.3), feat, size=12, colour=GREY, font=MONO)
-    txt(s, M + Inches(2.4), y, Inches(2.2), since, size=12, colour=GREY)
-    txt(s, M + Inches(4.85), y, Inches(0.4), "\u2014", size=12, colour=GREY, font=MONO)
-    txt(s, M + Inches(5.6), y, Inches(0.4), "\u2014", size=12, colour=GREY, font=MONO)
-
-label(s, Inches(7.55), Inches(4.62), Inches(5.0), "installed, not intended")
-versions = ["cuda-tile  1.7.0",
-            "tileiras, nvvm, nvrtc, nvcc  13.4.92",
-            "cupy-cuda13x  14.2.0   numpy  2.5.4"]
-for i, v in enumerate(versions):
-    txt(s, Inches(7.55), Inches(4.92) + i * Inches(0.28), Inches(5.1), v, size=12,
-        colour=INK, font=MONO)
-
-txt(s, M, Inches(5.85), Inches(11.9), Inches(0.8),
-    ["Three of cuTile's knobs do nothing on Ampere, and CUDA C++ cannot reach those instruction "
-     "families either. That is a result for the portability axis, not a limitation to apologise for.",
-     "Still to install, needed only for the CUDA half and profiling: ncu, compute-sanitizer."],
-    size=12, colour=GREY, line=1.28, space=4)
-footer(s, "Verified with pip list, nvidia-smi and a smoke test on this machine. Missing: ncu and "
-          "compute-sanitizer.", 6)
+insight(s, M, Inches(5.95), Inches(7.55), Inches(0.82), "WORTH SAYING",
+        "Three cuTile knobs do nothing on Ampere. That is a portability result, not an apology.",
+        size=12)
+txt(s, Inches(8.45), Inches(5.98), Inches(4.3),
+    ["Verified with pip list, nvidia-smi and a smoke test on this machine.",
+     "A cuTile kernel has compiled and run; the gate re-run is pending."],
+    size=10.5, colour=MUTE, line=1.3)
+metabar(s, "INSTALLED AND MEASURED HERE, NOT INTENDED", "06 / 11")
+vnav(s, 6, TOTAL)
 notes(s, "Two lanes, one destination. nvcc turns C++ into PTX and ptxas assembles it; cuTile goes "
-         "through TileIR and tileiras. The versions are what is actually installed.")
+         "through TileIR and tileiras. The versions are what is actually installed, and three "
+         "features simply do not exist on this chip.")
 
 # ============================================================= 7 measurement
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "the measurement")
-title(s, "One iteration, drawn, and the four figures it feeds.", size=34)
+bg(s)
+chapter(s, "05  \u00b7  THE MEASUREMENT")
+head(s, M, Inches(0.98), Inches(11.4),
+     [[("Four numbers, one protocol, ", INK), ("no stopwatch.", CORAL)]], size=32)
 
-ty = Inches(2.05)
-# warm-up block
-rect(s, M, ty, Inches(3.5), Inches(0.44), RGBColor(0xE4, 0xE1, 0xD8))
-txt(s, M + Inches(0.12), ty + Inches(0.11), Inches(3.3), "warm-up \u00d7 50", size=12,
-    colour=INK, font=MONO)
-# flush, deliberately OUTSIDE the bracket
-fx = M + Inches(3.7)
-rect(s, fx, ty, Inches(1.35), Inches(0.44), RGBColor(0xE4, 0xE1, 0xD8))
-txt(s, fx + Inches(0.1), ty + Inches(0.11), Inches(1.2), "L2 flush", size=12, colour=INK, font=MONO)
-# timed window
-wx = fx + Inches(1.55)
-rect(s, wx, ty, Inches(3.4), Inches(0.44), TILE)
-txt(s, wx + Inches(0.1), ty + Inches(0.11), Inches(3.2), "event start \u2192 kernel \u2192 stop",
-    size=12, colour=PAPER, font=MONO)
-# bracket around the timed window only
-by = ty + Inches(0.56)
-vline(s, wx, by, Inches(0.2), colour=INK, thick=Pt(1.0))
-vline(s, wx + Inches(3.4), by, Inches(0.2), colour=INK, thick=Pt(1.0))
-hline(s, wx, by + Inches(0.18), Inches(3.4), colour=INK, thick=Pt(1.0))
-txt(s, wx, by + Inches(0.24), Inches(3.4), "only this is timed", size=11, colour=INK,
-    align=PP_ALIGN.CENTER)
-txt(s, M, by + Inches(0.24), Inches(5.1),
-    "the flush is outside the window on purpose", size=11, colour=GREY)
-txt(s, M, Inches(3.1), Inches(11.9), Inches(0.6),
-    "Time to a duration, not a count: at least one second of GPU work per configuration, so the "
-    "number is steady state and not clock ramp.", size=15, colour=INK, line=1.25)
-txt(s, M, Inches(3.72), Inches(11.9), Inches(0.6),
-    "Report p50 and p90, and log clocks, power and throttle state on every row. Three timers have "
-    "to agree, or it is launch overhead wearing a lab coat.", size=15, colour=INK, line=1.25)
+rows = [
+    ("WARM-UP", "50 iterations before anything is timed. Compile time reported separately."),
+    ("TIMING", "At least one second of GPU work per configuration, not a fixed iteration count."),
+    ("FLUSH", "L2 cleared outside the event window, so write-back does not land in the next kernel."),
+    ("REPORT", "p50 and p90, with clocks, power and throttle state logged on every row."),
+]
+for i, (label, body) in enumerate(rows):
+    y = Inches(1.95) + i * Inches(0.78)
+    pill(s, M, y + Inches(0.02), label, fill=PINK, colour=INK, size=9.5)
+    txt(s, M + Inches(1.7), y, Inches(10.2), body, size=15, colour=INK, line=1.3)
+    rule(s, M, y + Inches(0.6), CW, PAPER2, Pt(1.0))
 
-label(s, M, Inches(4.55), Inches(6.0), "the four figures the report will contain")
-figs = [("Fig 1", "latency vs N"), ("Fig 2", "DRAM bytes vs N"),
-        ("Fig 3", "TFLOP/s vs peak"), ("Fig 4", "velocity, tunability")]
-for i, (num, name) in enumerate(figs):
-    x = M + i * Inches(3.0)
-    vline(s, x, Inches(5.05), Inches(1.1), colour=INK, thick=Pt(1.0))
-    hline(s, x, Inches(6.15), Inches(2.5), colour=INK, thick=Pt(1.0))
-    txt(s, x, Inches(4.85), Inches(2.5), num, size=11, bold=True, colour=GREY, font=MONO)
-    txt(s, x, Inches(6.24), Inches(2.5), name, size=12, colour=INK)
-footer(s, "Empty axes on purpose: they are the axes the CSV will fill. Artefacts are results.csv, "
-          "profiles/*.ncu-rep, figs/*.pdf, report.md.", 7)
-notes(s, "The protocol exists to survive scrutiny. The flush sits outside the timed window, and if "
-         "it drifted inside, fusion would look free. Every row carries clock and temperature, "
-         "because this is a laptop that throttles.")
+insight(s, M, Inches(5.28), Inches(11.9), Inches(1.35), "WHY THIS, AND NOT A SIMPLE LOOP",
+        ["Three timers have to agree, or the number is launch overhead wearing a lab coat. "
+         "Every row carries clock and temperature, because this is a laptop that throttles."],
+        size=14)
+metabar(s, "ARTEFACTS: results.csv  \u00b7  profiles/*.ncu-rep  \u00b7  figs/*.pdf  \u00b7  report.md",
+        "07 / 11")
+vnav(s, 7, TOTAL)
+notes(s, "The protocol exists to survive scrutiny. The flush sits outside the timed window; if it "
+         "drifted inside, fusion would look free. Clock and temperature travel with every row "
+         "because this machine throttles.")
 
 # ============================================================ 8 definition
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "definition of done  \u00b7  each of these can fail")
-title(s, "Six checks decide whether this is finished.", size=34)
+bg(s)
+chapter(s, "06  \u00b7  DEFINITION OF DONE")
+head(s, M, Inches(0.98), Inches(11.4),
+     [[("Six checks. ", INK), ("Every one can fail.", CORAL)]], size=32)
 
 checks = [
-    ("Correct on every size", "max|out \u2212 ref_fp64| \u2264 5e-3 \u00b7 max|ref|"),
-    ("Numerically stable", "no NaN or Inf; inputs \u00d7100 stay finite"),
-    ("Both models, one contract", "identical shapes, produced by the same harness"),
-    ("Performance is measured", "p50/p90 at N=2048, DRAM bytes from ncu"),
-    ("Profiling evidence exists", "one ncu report per kernel, section Tile for cuTile"),
-    ("The argument is made", "five axes, one figure each, a recommendation"),
+    ("01", "Correct on every size", "max|out \u2212 ref_fp64| \u2264 5e-3 \u00b7 max|ref|"),
+    ("02", "Numerically stable", "no NaN or Inf; inputs \u00d7100 stay finite"),
+    ("03", "Both models, one contract", "same shapes, same harness, same reference"),
+    ("04", "Performance is measured", "p50/p90 at N=2048, DRAM bytes from ncu"),
+    ("05", "Profiling evidence exists", "one ncu report per kernel, section Tile for cuTile"),
+    ("06", "The argument is made", "five axes, one figure each, a recommendation"),
 ]
-row_h = Inches(0.58)
-gate_top = Inches(1.78)
-for i, (name, cond) in enumerate(checks):
-    y = gate_top + i * row_h
-    rect(s, M, y + Inches(0.1), Inches(0.22), Inches(0.22), PAPER)
-    vline(s, M, y + Inches(0.1), Inches(0.22), colour=INK, thick=Pt(1.0))
-    hline(s, M, y + Inches(0.1), Inches(0.22), colour=INK, thick=Pt(1.0))
-    txt(s, M + Inches(0.4), y + Inches(0.06), Inches(3.9), name, size=15, bold=True, colour=INK)
-    txt(s, M + Inches(4.45), y + Inches(0.1), Inches(4.3), cond, size=13, colour=GREY)
-    txt(s, W - M - Inches(0.95), y + Inches(0.08), Inches(0.95), "pending", size=11,
-        colour=GREY, font=MONO, align=PP_ALIGN.RIGHT)
-    if i < 5:
-        hline(s, M, y + row_h - Inches(0.06), CW, colour=HAIR)
+for i, (num, name, cond) in enumerate(checks):
+    y = Inches(1.85) + i * Inches(0.55)
+    txt(s, M, y, Inches(0.6), num, size=11, bold=True, colour=MUTE, font=MONO)
+    txt(s, M + Inches(0.62), y - Inches(0.02), Inches(3.6), name, size=15, bold=True, colour=INK)
+    txt(s, M + Inches(4.35), y, Inches(5.4), cond, size=12, colour=MUTE)
+    txt(s, W - M - Inches(1.0), y, Inches(1.0), "pending", size=10, colour=MUTE, font=MONO,
+        align=PP_ALIGN.RIGHT)
+    rule(s, M, y + Inches(0.44), CW, PAPER2, Pt(1.0))
+vrule(s, W - M - Inches(1.0), Inches(1.85), Inches(0.55 * 4) - Inches(0.1), CORAL, Pt(2.5))
+txt(s, W - M - Inches(1.0), Inches(1.55), Inches(1.0), "GATE", size=9, bold=True, colour=CORAL,
+    font=MONO, align=PP_ALIGN.RIGHT)
 
-# hard gate bracket across checks 1-4, clear of the status column
-bx = W - M - Inches(2.0)
-vline(s, bx, gate_top + Inches(0.1), row_h * 4 - Inches(0.24), colour=CUDA, thick=Pt(2.0))
-txt(s, bx - Inches(1.85), gate_top - Inches(0.06), Inches(1.75), "hard gate  \u25b8", size=10,
-    bold=True, colour=CUDA, font=MONO, align=PP_ALIGN.RIGHT)
-
-label(s, M, Inches(5.4), Inches(6.0), "sizes, with the ones that catch the tail bug marked")
+pill(s, M, Inches(5.22), "SIZES", fill=INK, size=9.5)
 chips = ["1", "65", "130", "1000", "256", "512", "1024", "2048", "4096"]
-x = M
+x = M + Inches(1.28)
 for c in chips:
-    awkward = c in ("1", "65", "130", "1000")
-    w = Inches(0.72)
-    rect(s, x, Inches(5.68), w, Inches(0.34), CUDA if awkward else RGBColor(0xE4, 0xE1, 0xD8))
-    txt(s, x, Inches(5.73), w, c, size=12, colour=(PAPER if awkward else INK), font=MONO,
+    hot = c in ("1", "65", "130", "1000")
+    w = Inches(0.62)
+    rect(s, x, Inches(5.22), w, Inches(0.32), CORAL if hot else PAPER2, "size chip " + c)
+    txt(s, x, Inches(5.28), w, c, size=10.5, colour=WHITE if hot else INK, font=MONO,
         align=PP_ALIGN.CENTER)
-    x += w + Inches(0.12)
-txt(s, M, Inches(6.12), Inches(11.9), Inches(0.5),
-    "A one-key tail error is about 1e-3, below tolerance: N=4095 passes with the bug, N=1000 does "
-    "not. That is why the marked sizes exist.", size=12, colour=GREY)
-footer(s, "The tolerance is my choice, the brief prescribes none, and it is stated so it can be "
-          "argued with.", 8)
-notes(s, "Every row can fail, which is the point. The marked sizes are the ones where a missing mask "
+    x += w + Inches(0.1)
+txt(s, x + Inches(0.15), Inches(5.3), Inches(4.2), "red = sizes that expose a missing tail mask",
+    size=10, colour=MUTE, font=MONO)
+
+# hard gate: one row, pill and sentence on the same baseline
+rect(s, M, Inches(5.92), CW, Inches(0.62), INK, "hard gate bar")
+pill(s, M + Inches(0.22), Inches(6.1), "HARD GATE", fill=YELLOW, colour=INK, size=9.5,
+     h=Inches(0.26), pad=Inches(0.14))
+txt(s, M + Inches(1.62), Inches(6.12), Inches(10.1),
+    "No variant work starts until 01 to 04 pass on both kernels.", size=13, colour=WHITE)
+metabar(s, "TOLERANCE IS MY CHOICE \u2014 THE BRIEF PRESCRIBES NONE, SO IT IS STATED TO BE ARGUED WITH",
+        "08 / 11")
+vnav(s, 8, TOTAL)
+notes(s, "Every row can fail, which is the point. The red sizes are the ones where a missing mask "
          "produces an error above tolerance. Row six is where a quarter of the grade sits, and it "
          "is writing, not code.")
 
-# ================================================================ 9 the plan
+# ==================================================================== 9 plan
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "the plan  \u00b7  seven days, five gates")
-title(s, "What happens on which day, and what gets cut first.", size=34)
+bg(s)
+chapter(s, "07  \u00b7  THE PLAN")
+head(s, M, Inches(0.98), Inches(10.4),
+     [[("Seven days, five gates, ", INK), ("one cut list.", CORAL)]], size=32)
 
-days = ["Sat 31", "Sun 1", "Mon 2", "Tue 3", "Wed 4", "Thu 5", "Fri 6", "Sat 7"]
-gx0 = M + Inches(3.15)
-col_w = (CW - Inches(3.15)) / 8
-for i, d in enumerate(days):
-    x = gx0 + i * col_w
-    txt(s, x, Inches(1.72), col_w, d, size=11, bold=True,
-        colour=INK if i else CUDA, font=MONO)
-vline(s, gx0 + Inches(0.02), Inches(1.95), Inches(4.05), colour=CUDA, thick=Pt(1.5))
-txt(s, gx0 + Inches(0.08), Inches(1.5), Inches(1.4), "today", size=10, colour=CUDA, font=MONO)
+days = [("SAT 31", "gate green"), ("SUN 1", "bench.py"), ("MON 2", "cuTile kernel"),
+        ("TUE 3", "CUDA kernel"), ("WED 4", "sweeps"), ("THU 5", "ncu profiles"),
+        ("FRI 6", "report"), ("SAT 7", "submit")]
+ty = Inches(3.55)
+lx, rx = M + Inches(0.3), W - M - Inches(0.5)
+rule(s, lx, ty, rx - lx, INK, Pt(2.0))
+step = (rx - lx) / (len(days) - 1)
+for i, (day, work) in enumerate(days):
+    cx = lx + i * step
+    gate = i in (0, 1, 2, 3, 7)
+    rect(s, cx - Inches(0.055), ty - Inches(0.055), Inches(0.11), Inches(0.11), INK,
+         "day marker")
+    if gate:
+        rect(s, cx - Inches(0.07), ty - Inches(0.52), Inches(0.14), Inches(0.14), CORAL,
+             "gate marker", shape=MSO_SHAPE.DIAMOND)
+        txt(s, cx - Inches(0.55), ty - Inches(0.82), Inches(1.1), "gate", size=8, colour=CORAL,
+            font=MONO, align=PP_ALIGN.CENTER)
+    txt(s, cx - Inches(0.62), ty - Inches(0.36), Inches(1.24), day, size=10, bold=True,
+        colour=INK if i else CORAL, font=MONO, align=PP_ALIGN.CENTER)
+    txt(s, cx - Inches(0.72), ty + Inches(0.2), Inches(1.44), work, size=11,
+        colour=INK if i else CORAL, align=PP_ALIGN.CENTER, line=1.2)
 
-rows = [
-    ("gate green", 0, 0, PASS, "environment"),
-    ("bench.py", 1, 1, PASS, "contract"),
-    ("cuTile kernel", 2, 2, TILE, "kernels"),
-    ("CUDA kernel", 3, 3, CUDA, "kernels"),
-    ("sweeps", 4, 4, PASS, "numbers"),
-    ("ncu profiles", 5, 5, PASS, "evidence"),
-    ("report", 6, 6, PASS, "argument"),
-    ("submit", 7, 7, PASS, "submit"),
-]
-for i, (name, d0, d1, col, gate) in enumerate(rows):
-    y = Inches(2.05) + i * Inches(0.5)
-    txt(s, M, y + Inches(0.08), Inches(3.0), name, size=13, colour=INK)
-    txt(s, M + Inches(2.05), y + Inches(0.12), Inches(1.0), gate, size=10, colour=GREY, font=MONO)
-    rect(s, gx0 + d0 * col_w + Inches(0.05), y + Inches(0.1),
-         col_w * (d1 - d0 + 1) - Inches(0.1), Inches(0.3), col)
-    diamond(s, gx0 + (d1 + 1) * col_w - Inches(0.05), y + Inches(0.25), Inches(0.17), INK)
-
-hline(s, M, Inches(6.15), CW, colour=HAIR)
-label(s, M, Inches(6.26), Inches(6.0), "cut first, in this order", colour=CUDA)
-txt(s, M, Inches(6.5), Inches(6.2), "GQA and the sweep figure  \u2192  Fig 4  \u2192  the debuggability "
-    "table", size=12, colour=GREY)
-label(s, Inches(7.0), Inches(6.26), Inches(4.0), "never cut", colour=PASS)
-txt(s, Inches(7.0), Inches(6.5), Inches(5.6),
-    "both kernels, the correctness numbers, the profiles", size=12, colour=GREY)
-footer(s, "The brief's own milestones, 10/07 to 10/28, have passed. This is the recovery plan.", 9)
+rule(s, M, Inches(4.95), CW, INK, Pt(1.0))
+pill(s, M, Inches(5.1), "CUT FIRST", fill=CORAL, size=9.5)
+txt(s, M + Inches(1.6), Inches(5.08), Inches(4.6), "GQA  \u2192  Fig 4  \u2192  the debuggability table",
+    size=12, colour=INK, font=MONO)
+pill(s, Inches(7.0), Inches(5.1), "NEVER CUT", fill=INK, size=9.5)
+txt(s, Inches(8.35), Inches(5.08), Inches(4.3), "both kernels, the correctness numbers, the profiles",
+    size=12, colour=INK, font=MONO)
+txt(s, M, Inches(5.85), Inches(11.9),
+    ["The brief's own milestones, 10/07 to 10/28, have passed. This is the recovery plan: one "
+     "kernel per model, measured properly, with a report that takes a position.",
+     "The cut list is written now so that decision is not made at midnight on the sixth."],
+    size=12, colour=MUTE, line=1.3, space=5)
+metabar(s, "EIGHT COLUMNS BECAUSE DAY ZERO IS TODAY", "09 / 11")
+vnav(s, 9, TOTAL)
 notes(s, "I am behind the brief's milestones and this is the recovery plan. Two kernels, measured "
-         "properly, with a report that takes a position. The cut list is written now so that "
-         "decision is not made at midnight on the sixth.")
+         "properly, a report that takes a position. The cut list exists now so that choice is not "
+         "made at midnight.")
 
-# ============================================================ 10 references
+# ============================================================== 10 references
 s = new(prs)
-bg(s, PAPER)
-label(s, M, Inches(0.5), Inches(9.0), "references")
-title(s, "Where this comes from.", size=34)
+bg(s)
+chapter(s, "08  \u00b7  SOURCES")
+head(s, M, Inches(0.98), Inches(9.0),
+     [[("Where this ", INK), ("comes from.", CORAL)]], size=32)
 
-label(s, M, Inches(1.7), Inches(6.0), "the three that carry the most weight")
 primary = [("cuTile Python documentation", "docs.nvidia.com/cuda/cutile-python"),
-           ("NVIDIA/TileGym: matmul and attention kernels", "github.com/NVIDIA/TileGym"),
+           ("NVIDIA/TileGym \u2014 attention and matmul kernels", "github.com/NVIDIA/TileGym"),
            ("Dao et al., FlashAttention, 2022", "arxiv.org/abs/2205.14135")]
 for i, (name, url) in enumerate(primary):
-    y = Inches(2.0) + i * Inches(0.72)
-    txt(s, M, y, Inches(7.0), name, size=17, bold=True, colour=INK)
-    txt(s, M, y + Inches(0.3), Inches(7.0), url, size=12, colour=TILE, font=MONO)
+    y = Inches(1.95) + i * Inches(0.95)
+    txt(s, M, y, Inches(7.2), name, size=17, bold=True, colour=INK)
+    txt(s, M, y + Inches(0.34), Inches(7.2), url, size=11.5, colour=BLUE, font=MONO)
+    rule(s, M, y + Inches(0.72), Inches(7.2), PAPER2, Pt(1.0))
 
-vline(s, Inches(8.05), Inches(1.7), Inches(3.6), colour=HAIR)
-label(s, Inches(8.3), Inches(1.7), Inches(4.0), "supporting")
+vrule(s, Inches(8.15), Inches(1.95), Inches(3.4), PAPER2, Pt(1.0))
+pill(s, Inches(8.45), Inches(1.9), "ALSO USED", size=9.5)
 secondary = [("Milakov and Gimelshein, online softmax", "arxiv.org/abs/1801.05824"),
              ("Dao, FlashAttention-2", "arxiv.org/abs/2307.08691"),
              ("Vaswani et al., Attention Is All You Need", "arxiv.org/abs/1706.03762"),
-             ("cutile-python samples", "github.com/NVIDIA/cutile-python"),
-             ("Nsight Compute guide", "docs.nvidia.com/nsight-compute/ProfilingGuide")]
+             ("Nsight Compute profiling guide", "docs.nvidia.com/nsight-compute/ProfilingGuide"),
+             ("cutile-python samples", "github.com/NVIDIA/cutile-python")]
 for i, (name, url) in enumerate(secondary):
-    y = Inches(2.0) + i * Inches(0.6)
-    txt(s, Inches(8.3), y, Inches(4.4), name, size=12, colour=INK)
-    txt(s, Inches(8.3), y + Inches(0.24), Inches(4.4), url, size=10, colour=GREY, font=MONO)
+    y = Inches(2.4) + i * Inches(0.56)
+    txt(s, Inches(8.45), y, Inches(4.3), name, size=11.5, colour=INK)
+    txt(s, Inches(8.45), y + Inches(0.22), Inches(4.3), url, size=9.5, colour=MUTE, font=MONO)
 
-hline(s, M, Inches(5.62), CW, colour=HAIR)
-label(s, M, Inches(5.74), Inches(6.0), "learned from, not cited")
-txt(s, M, Inches(6.0), Inches(11.9),
+rule(s, M, Inches(5.35), CW, INK, Pt(1.0))
+pill(s, M, Inches(5.5), "LEARNED FROM", size=9.5)
+txt(s, M, Inches(5.92), Inches(11.9),
     "3Blue1Brown, Deep Learning ch.6   \u00b7   Alammar, The Illustrated Transformer   \u00b7   "
-    "Georgia Tech, Transformer Explainer", size=12, colour=GREY)
-footer(s, "Repository, plan and decision log: " + REPO + "   (the repo name is as created, typo "
-          "included)", 10)
-notes(s, "Three sources carry the technical weight: the cuTile docs, TileGym's attention kernels, "
-         "and the FlashAttention paper. The rest is support and background.")
+    "Georgia Tech, Transformer Explainer", size=11.5, colour=INK)
+txt(s, M, Inches(6.3), Inches(11.9),
+    "Repository, plan and decision log: " + REPO, size=10, colour=MUTE, font=MONO)
+metabar(s, "EVERY LINK OPENED WHILE PREPARING THIS DECK", "10 / 11")
+vnav(s, 10, TOTAL)
+notes(s, "Three sources carry the technical weight: the cuTile docs, TileGym's attention kernels and "
+         "the FlashAttention paper. The rest is support and background, and the repo carries the "
+         "plan with its decision log.")
 
-# ============================================================ 11 risks/asks
+# ================================================================ 11 asks
 s = new(prs)
-bg(s, DARK)
-label(s, M, Inches(0.5), Inches(9.0), "risks and asks", colour=DARKGREY)
-title(s, "What could stop this, and what I need from you.", colour=DARKTX, size=34)
+bg(s, INK)
+pill(s, M, Inches(0.44), "09  \u00b7  RISKS AND ASKS", fill=YELLOW, colour=INK)
+head(s, M, Inches(1.85), Inches(7.4),
+     [[("Three answers", WHITE)], [("change the plan.", YELLOW)]], size=44)
+txt(s, M, Inches(4.05), Inches(6.6),
+    "Everything else I can absorb. These three decisions are not mine to make, and each one "
+    "moves the schedule.", size=14, colour=DARKGREY, line=1.35)
 
-# 2x2 likelihood / impact plot
-px, py, pw, ph = M, Inches(1.85), Inches(4.6), Inches(3.2)
-vline(s, px, py, ph, colour=DARKGREY, thick=Pt(1.0))
-hline(s, px, py + ph, pw, colour=DARKGREY, thick=Pt(1.0))
-txt(s, px, py - Inches(0.28), Inches(3.0), "impact \u2191", size=10, colour=DARKGREY, font=MONO)
-txt(s, px + pw - Inches(1.4), py + ph + Inches(0.08), Inches(1.4), "likelihood \u2192", size=10,
+rows = [
+    ("01", "Attention only, no GEMM?", "default: OP2 only"),
+    ("02", "Does 07 November hold?", "default: it does"),
+    ("03", "Is N = 2048 the target length?", "default: N = 2048"),
+]
+for i, (num, q, dflt) in enumerate(rows):
+    y = Inches(1.85) + i * Inches(1.36)
+    rect(s, Inches(8.4), y + Inches(0.1), Inches(0.13), Inches(0.13), YELLOW, "bullet")
+    txt(s, Inches(8.72), y, Inches(0.5), num, size=10, colour=DARKGREY, font=MONO)
+    txt(s, Inches(8.72), y + Inches(0.22), Inches(4.0), q, size=17, bold=True, colour=WHITE,
+        line=1.15)
+    txt(s, Inches(8.72), y + Inches(0.78), Inches(4.0), dflt, size=10, colour=YELLOW, font=MONO)
+txt(s, Inches(8.4), Inches(6.05), Inches(4.4),
+    "Silence by Tue 3 Nov and the defaults run.", size=11, colour=DARKGREY, font=MONO)
+rect(s, 0, META_Y, W, H - META_Y, RGBColor(0x1C, 0x1C, 0x1C), "footer bar")
+txt(s, M, META_Y + Inches(0.15), Inches(9.4), Inches(0.24),
+    "ARRIVES 07 NOV:  TWO KERNELS  \u00b7  THREE COMMANDS PER RERUN  \u00b7  ONE REPORT", size=10,
+    colour=WHITE, font=MONO)
+txt(s, W - M - Inches(2.2), META_Y + Inches(0.15), Inches(2.2), Inches(0.24), "11 / 11", size=10,
     colour=DARKGREY, font=MONO, align=PP_ALIGN.RIGHT)
-risks = [(0.28, 0.78, "laptop throttling"), (0.30, 0.34, "4 GB of VRAM"),
-         (0.72, 0.72, "cuTile on sm_86"), (0.78, 0.30, "seven days, one person")]
-for fx, fy, name in risks:
-    cx, cy = px + pw * fx, py + ph * (1 - fy)
-    diamond(s, cx, cy, Inches(0.17), CUDA_L)
-    txt(s, cx + Inches(0.14), cy - Inches(0.11), Inches(1.8), name, size=11, colour=DARKTX, font=MONO)
-txt(s, px, py + ph + Inches(0.34), Inches(4.7),
-    "Each is handled: clocks logged per row, sizes fixed now, kernel before harness, cut list "
-    "written.", size=12, colour=DARKGREY, line=1.25)
-
-# the three questions, as the hero
-qx = Inches(6.2)
-label(s, qx, Inches(1.6), Inches(6.0), "three answers i need", colour=TILE_L)
-qa = [("Attention only, no GEMM?", "the brief says choose either but lists artefacts for both"),
-      ("Does 07 November hold?", "given the restart on 14 October"),
-      ("Is N = 2048 the right target?", "it sets every benchmark size I fix tomorrow")]
-for i, (q, why) in enumerate(qa):
-    y = Inches(1.95) + i * Inches(1.22)
-    txt(s, qx, y, Inches(6.4), q, size=21, bold=True, colour=DARKTX, line=1.1)
-    txt(s, qx, y + Inches(0.42), Inches(6.4), "if silent: " + why, size=12, colour=DARKGREY,
-        font=MONO)
-rect(s, qx, Inches(5.65), Inches(6.4), Inches(0.34), RGBColor(0x1B, 0x22, 0x29))
-txt(s, qx + Inches(0.12), Inches(5.72), Inches(6.2),
-    "default from Tue 3 Nov: OP2 only, N = 2048, GQA stays stretch", size=12,
-    colour=TILE_L, font=MONO)
-txt(s, qx, Inches(6.2), Inches(6.4), "arrives 07 nov: two kernels, three commands, one report",
-    size=12, colour=DARKGREY, font=MONO)
-footer(s, REPO, 11, dark=True)
-notes(s, "Three questions, and what I will assume if I hear nothing. The risks are plotted by "
-         "likelihood and impact so the ones worth arguing about are visible. What arrives on the "
-         "seventh is one line on purpose.")
+vnav(s, 11, TOTAL, dark=True)
+notes(s, "Three questions and what I assume if I hear nothing. The risks are handled, not hidden: "
+         "clocks are logged, sizes are fixed now, and the kernel comes before the harness.")
 
 # ---------------------------------------------------------------------- save
 out = Path(__file__).resolve().parent.parent / "docs" / "op2-attention-slides.pptx"
-prs.core_properties.title = "Attention in CUDA C++ and cuTile"
+prs.core_properties.title = "Attention, written two ways"
 prs.core_properties.author = "Surya Harshith (cs23b010)"
 prs.core_properties.subject = "CS-6023 GPU Programming - Project OP2"
 prs.save(out)
